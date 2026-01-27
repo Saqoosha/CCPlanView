@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="github-markdown.css">
+    <link id="highlight-theme" rel="stylesheet" href="highlight-github.min.css">
+    <script src="marked.min.js"></script>
+    <script src="highlight.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+        }
+        .markdown-body {
+            background-color: transparent;
+            padding: 24px 32px;
+            max-width: 980px;
+            margin: 0 auto;
+        }
+        .empty-state {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            color: #656d76;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            font-size: 16px;
+        }
+        .empty-state p {
+            text-align: center;
+            line-height: 1.6;
+        }
+    </style>
+</head>
+<body>
+    <article class="markdown-body" id="content" style="display: none;"></article>
+    <div class="empty-state" id="empty-state">
+        <p>Drop a Markdown file here<br>or use File &gt; Open</p>
+    </div>
+    <script>
+        marked.setOptions({
+            breaks: true,
+            gfm: true
+        });
+
+        function setTheme(isDark) {
+            const link = document.getElementById('highlight-theme');
+            link.href = isDark ? 'highlight-github-dark.min.css' : 'highlight-github.min.css';
+            document.documentElement.setAttribute('data-color-mode', isDark ? 'dark' : 'light');
+            document.documentElement.setAttribute('data-dark-theme', 'dark');
+            document.documentElement.setAttribute('data-light-theme', 'light');
+        }
+
+        function renderMarkdown(source) {
+            const contentEl = document.getElementById('content');
+            const emptyEl = document.getElementById('empty-state');
+            const scrollRatio = document.documentElement.scrollHeight > 0
+                ? window.scrollY / document.documentElement.scrollHeight
+                : 0;
+
+            contentEl.innerHTML = marked.parse(source);
+            contentEl.style.display = 'block';
+            emptyEl.style.display = 'none';
+
+            document.querySelectorAll('pre code').forEach(block => {
+                hljs.highlightElement(block);
+            });
+
+            requestAnimationFrame(() => {
+                window.scrollTo(0, document.documentElement.scrollHeight * scrollRatio);
+            });
+        }
+
+        function showEmpty() {
+            document.getElementById('content').style.display = 'none';
+            document.getElementById('empty-state').style.display = 'flex';
+        }
+
+    </script>
+</body>
+</html>
