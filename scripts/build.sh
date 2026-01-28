@@ -13,11 +13,11 @@ mkdir -p "${BUILD_DIR}"
 xcodegen generate --spec "${ROOT_DIR}/project.yml"
 
 xcodebuild \
-  -scheme MarkdownViewer \
+  -scheme CCPlanView \
   -configuration "${CONFIGURATION}" \
   -destination 'platform=macOS' \
   -derivedDataPath "${DERIVED_DATA_DIR}" \
   build
 
 echo "Built app:"
-echo "${DERIVED_DATA_DIR}/Build/Products/${CONFIGURATION}/Markdown Viewer.app"
+echo "${DERIVED_DATA_DIR}/Build/Products/${CONFIGURATION}/CCPlanView.app"

@@ -5,9 +5,9 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT_DIR}/build"
 DERIVED_DATA_DIR="${BUILD_DIR}/DerivedData"
 
-APP_NAME="Markdown Viewer"
-VOL_NAME="Markdown Viewer"
-DMG_NAME="MarkdownViewer"
+APP_NAME="CCPlanView"
+VOL_NAME="CCPlanView"
+DMG_NAME="CCPlanView"
 
 DMG_ROOT="${BUILD_DIR}/dmg-root"
 OUT_DMG="${BUILD_DIR}/${DMG_NAME}.dmg"

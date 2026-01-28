@@ -1,7 +1,7 @@
 import AppKit
 
 @main
-enum MarkdownViewerApp {
+enum CCPlanViewApp {
     static func main() {
         let app = NSApplication.shared
         let delegate = AppDelegate()

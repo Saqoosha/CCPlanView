@@ -4,7 +4,7 @@ import Foundation
 final class MarkdownDocument: ObservableObject {
     @Published var fileURL: URL?
     @Published var markdownContent: String = ""
-    @Published var windowTitle: String = "Markdown Viewer"
+    @Published var windowTitle: String = "CCPlanView"
 
     private var fileWatcher: FileWatcher?
 

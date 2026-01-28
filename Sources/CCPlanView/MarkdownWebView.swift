@@ -14,8 +14,7 @@ struct MarkdownWebView: NSViewRepresentable {
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.setValue(false, forKey: "drawsBackground")
-
+        webView.underPageBackgroundColor = .white
         let container = DropContainerView(webView: webView)
         container.onFileDrop = onFileDrop
 
@@ -46,6 +45,7 @@ struct MarkdownWebView: NSViewRepresentable {
 
         if themeChanged {
             context.coordinator.lastIsDarkMode = isDarkMode
+            webView.underPageBackgroundColor = isDarkMode ? NSColor(red: 0.051, green: 0.067, blue: 0.09, alpha: 1) : .white
             let js = "setTheme(\(isDarkMode));"
             webView.evaluateJavaScript(js)
         }
@@ -77,7 +77,7 @@ struct MarkdownWebView: NSViewRepresentable {
                         })()
                     """) { result, _ in
                         if let html = result as? String, !html.isEmpty {
-                            let path = "/tmp/markdown-viewer-debug.txt"
+                            let path = "/tmp/ccplanview-debug.txt"
                             try? html.write(toFile: path, atomically: true, encoding: .utf8)
                         }
                     }
@@ -164,6 +164,14 @@ final class DropContainerView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError()
+    }
+
+    override var isOpaque: Bool { true }
+    override var preservesContentDuringLiveResize: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        NSColor.white.setFill()
+        dirtyRect.fill()
     }
 }
 

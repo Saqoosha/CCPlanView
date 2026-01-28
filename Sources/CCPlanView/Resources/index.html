@@ -11,13 +11,20 @@
         body {
             margin: 0;
             padding: 0;
+            padding-top: 52px;
             background: #ffffff;
+        }
+        [data-color-mode="dark"] body {
+            background: #0d1117;
         }
         .markdown-body {
             background-color: transparent;
             padding: 24px 32px;
             max-width: 980px;
             margin: 0 auto;
+        }
+        .markdown-body pre code.hljs {
+            padding: 0;
         }
         .empty-state {
             display: flex;

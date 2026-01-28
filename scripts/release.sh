@@ -25,7 +25,7 @@ fi
 
 cd "$ROOT_DIR"
 
-echo "=== Releasing Markdown Viewer ${VERSION} ==="
+echo "=== Releasing CCPlanView ${VERSION} ==="
 
 # Get current build number and increment
 CURRENT_BUILD=$(grep 'CURRENT_PROJECT_VERSION:' project.yml | sed 's/.*: *"\([0-9]*\)".*/\1/')
@@ -40,7 +40,7 @@ sed -i '' "s/CURRENT_PROJECT_VERSION: \".*\"/CURRENT_PROJECT_VERSION: \"${NEW_BU
 echo "=== Building and packaging DMG ==="
 "${ROOT_DIR}/scripts/package_dmg.sh"
 
-DMG_PATH="${BUILD_DIR}/MarkdownViewer.dmg"
+DMG_PATH="${BUILD_DIR}/CCPlanView.dmg"
 
 if [[ ! -f "$DMG_PATH" ]]; then
   echo "Error: DMG not found at $DMG_PATH"
@@ -65,9 +65,9 @@ git push origin "$TAG"
 
 echo "=== Creating GitHub Release ==="
 gh release create "$TAG" "$DMG_PATH" \
-  --title "Markdown Viewer ${VERSION}" \
+  --title "CCPlanView ${VERSION}" \
   --notes "$(cat <<EOF
-## Markdown Viewer ${VERSION}
+## CCPlanView ${VERSION}
 
 ### Changes
 - (Add release notes here)
