@@ -20,6 +20,7 @@ struct ContentView: View {
             } else {
                 MarkdownWebView(
                     markdown: document.markdownContent,
+                    fileURL: document.fileURL,
                     onFileDrop: { url in
                         document.open(url: url)
                     }

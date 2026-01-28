@@ -92,6 +92,10 @@
 
         let previousTokens = null;
 
+        function resetDiff() {
+            previousTokens = null;
+        }
+
         function range(count) {
             return Array.from({ length: count }, (_, i) => i);
         }

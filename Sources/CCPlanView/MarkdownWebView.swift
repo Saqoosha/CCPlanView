@@ -3,6 +3,7 @@ import WebKit
 
 struct MarkdownWebView: NSViewRepresentable {
     let markdown: String
+    let fileURL: URL?
     let onFileDrop: (URL) -> Void
     @Environment(\.colorScheme) private var colorScheme
 
@@ -40,8 +41,14 @@ struct MarkdownWebView: NSViewRepresentable {
             return
         }
 
+        let fileChanged = context.coordinator.lastFileURL != fileURL
         let themeChanged = context.coordinator.lastIsDarkMode != isDarkMode
         let contentChanged = context.coordinator.lastMarkdown != markdown
+
+        if fileChanged {
+            context.coordinator.lastFileURL = fileURL
+            webView.evaluateJavaScript("resetDiff();")
+        }
 
         if themeChanged {
             context.coordinator.lastIsDarkMode = isDarkMode
@@ -98,6 +105,7 @@ struct MarkdownWebView: NSViewRepresentable {
         }
         var lastMarkdown: String?
         var lastIsDarkMode: Bool?
+        var lastFileURL: URL?
         var isPageLoaded = false
         var pendingMarkdown: String?
         var pendingIsDarkMode: Bool?
