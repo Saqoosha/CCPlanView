@@ -4,8 +4,14 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    fileprivate static let titlebarHeight: CGFloat = 52
+    fileprivate static let windowButtonsWidth: CGFloat = 70
+
     let document = MarkdownDocument()
     private var window: NSWindow?
+    /// Holds URL received before window is ready.
+    /// `application(_:open:)` can be called before `applicationDidFinishLaunching`.
+    private var pendingURL: URL?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let contentView = ContentView(document: document)
@@ -36,7 +42,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 dragView.topAnchor.constraint(equalTo: themeFrame.topAnchor),
                 dragView.leadingAnchor.constraint(equalTo: themeFrame.leadingAnchor),
                 dragView.trailingAnchor.constraint(equalTo: themeFrame.trailingAnchor),
-                dragView.heightAnchor.constraint(equalToConstant: 52),
+                dragView.heightAnchor.constraint(equalToConstant: Self.titlebarHeight),
             ])
         }
         self.window = window
@@ -45,14 +51,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         if let url = pendingURL {
             pendingURL = nil
-            Task { @MainActor in
-                document.open(url: url)
-            }
+            document.open(url: url)
         }
     }
-
-    // Holds URL received before window is ready
-    var pendingURL: URL?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
@@ -69,11 +70,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func application(_ application: NSApplication, open urls: [URL]) {
         guard let url = urls.first else { return }
         if window != nil {
-            Task { @MainActor in
-                document.open(url: url)
-                window?.makeKeyAndOrderFront(nil)
-                application.activate()
-            }
+            document.open(url: url)
+            window?.makeKeyAndOrderFront(nil)
+            application.activate()
         } else {
             pendingURL = url
         }
@@ -131,17 +130,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openFile() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [
-            UTType(filenameExtension: "md")!,
-            UTType(filenameExtension: "markdown")!,
+            UTType(filenameExtension: "md"),
+            UTType(filenameExtension: "markdown"),
             .plainText,
-        ]
+        ].compactMap { $0 }
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
 
         if panel.runModal() == .OK, let url = panel.url {
-            Task { @MainActor in
-                document.open(url: url)
-            }
+            document.open(url: url)
         }
     }
 }
@@ -157,8 +154,8 @@ final class TitlebarDragView: NSView {
         // Only intercept in the titlebar region, excluding window control buttons
         let local = convert(point, from: superview)
         guard bounds.contains(local) else { return nil }
-        // Skip left area where close/minimize/zoom buttons are (~70px)
-        if local.x < 70 { return nil }
+        // Skip left area where close/minimize/zoom buttons are
+        if local.x < AppDelegate.windowButtonsWidth { return nil }
         return self
     }
 }

@@ -3,7 +3,12 @@ import Foundation
 final class FileWatcher: Sendable {
     private let url: URL
     private let onChange: @Sendable () -> Void
-    private let queue = DispatchQueue(label: "sh.saqoo.ccplanview.filewatcher")
+    private let queue: DispatchQueue
+    private let queueKey = DispatchSpecificKey<Bool>()
+
+    private var isOnQueue: Bool {
+        DispatchQueue.getSpecific(key: queueKey) == true
+    }
 
     // nonisolated(unsafe) because DispatchSource is managed entirely on our serial queue
     nonisolated(unsafe) private var source: DispatchSourceFileSystemObject?
@@ -14,13 +19,22 @@ final class FileWatcher: Sendable {
     init(url: URL, onChange: @escaping @Sendable () -> Void) {
         self.url = url
         self.onChange = onChange
+        self.queue = DispatchQueue(label: "sh.saqoo.ccplanview.filewatcher")
+        queue.setSpecific(key: queueKey, value: true)
     }
 
     deinit {
-        // Must clean up synchronously in deinit to avoid capturing self after deallocation
-        source?.cancel()
-        source = nil
-        fileDescriptor = -1
+        // Clean up synchronously, checking if we're already on the queue to avoid deadlock.
+        // This can happen if the last reference is released from within an event handler.
+        if isOnQueue {
+            isRunning = false
+            stopWatching()
+        } else {
+            queue.sync {
+                isRunning = false
+                stopWatching()
+            }
+        }
     }
 
     func start() {
@@ -32,9 +46,14 @@ final class FileWatcher: Sendable {
     }
 
     func stop() {
-        queue.sync {
+        if isOnQueue {
             isRunning = false
             stopWatching()
+        } else {
+            queue.sync {
+                isRunning = false
+                stopWatching()
+            }
         }
     }
 

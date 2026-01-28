@@ -29,7 +29,7 @@ final class MarkdownDocument: ObservableObject {
         fileWatcher?.stop()
         guard let url = fileURL else { return }
         fileWatcher = FileWatcher(url: url) { [weak self] in
-            Task { @MainActor [weak self] in
+            Task { @MainActor in
                 self?.loadContent()
             }
         }

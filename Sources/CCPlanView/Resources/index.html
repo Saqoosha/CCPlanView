@@ -162,7 +162,8 @@
         }
 
         // Returns { changes: Map<newIdx, changeInfo>, deletions: [{beforeNewIdx, token}] }
-        // changeInfo = { type: 'added' } | { type: 'modified', oldToken } | { type: 'list', listDiff }
+        // changeInfo = { type: 'added' } | { type: 'modified', oldToken } | { type: 'list', listDiff } |
+        //              { type: 'table', tableDiff } | { type: 'code', codeDiff } | { type: 'blockquote', bqDiff }
         // listDiff = { changed: Map<itemIdx, oldItem|null>, deleted: [{beforeIdx, item}] }
         function diffTokens(oldTokens, newTokens) {
             const filter = tokens => tokens.filter(t => t.type !== 'space');

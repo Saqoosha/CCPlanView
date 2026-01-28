@@ -52,6 +52,7 @@ struct MarkdownWebView: NSViewRepresentable {
 
         if themeChanged {
             context.coordinator.lastIsDarkMode = isDarkMode
+            // GitHub dark theme background (#0d1117)
             webView.underPageBackgroundColor = isDarkMode ? NSColor(red: 0.051, green: 0.067, blue: 0.09, alpha: 1) : .white
             let js = "setTheme(\(isDarkMode));"
             webView.evaluateJavaScript(js)
@@ -59,37 +60,12 @@ struct MarkdownWebView: NSViewRepresentable {
 
         if contentChanged {
             context.coordinator.lastMarkdown = markdown
-            let escaped = escapeForJS(markdown)
-            webView.evaluateJavaScript("renderMarkdown(`\(escaped)`);") { _, _ in
-                // Debug: dump rendered HTML structure after diff is applied
-                webView.evaluateJavaScript("""
-                    (function() {
-                        const el = document.getElementById('content');
-                        if (!el) return '';
-                        const lines = [];
-                        function walk(node, indent) {
-                            for (const child of node.children) {
-                                const tag = child.tagName.toLowerCase();
-                                const cls = child.className ? '.' + child.className.split(' ').join('.') : '';
-                                const text = child.textContent.substring(0, 60).replace(/\\n/g, ' ');
-                                lines.push(indent + '<' + tag + cls + '> ' + text);
-                                if (['ul','ol','table','thead','tbody','tr'].includes(tag)) walk(child, indent + '  ');
-                            }
-                        }
-                        walk(el, '');
-                        return lines.join('\\n');
-                    })()
-                """) { result, _ in
-                    if let html = result as? String, !html.isEmpty {
-                        let path = "/tmp/ccplanview-debug.txt"
-                        try? html.write(toFile: path, atomically: true, encoding: .utf8)
-                    }
-                }
-            }
+            let escaped = Self.escapeForJS(markdown)
+            webView.evaluateJavaScript("renderMarkdown(`\(escaped)`);")
         }
     }
 
-    private func escapeForJS(_ string: String) -> String {
+    private static func escapeForJS(_ string: String) -> String {
         string
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "`", with: "\\`")
@@ -119,11 +95,7 @@ struct MarkdownWebView: NSViewRepresentable {
             }
             if let markdown = pendingMarkdown, !markdown.isEmpty {
                 lastMarkdown = markdown
-                let escaped = markdown
-                    .replacingOccurrences(of: "\\", with: "\\\\")
-                    .replacingOccurrences(of: "`", with: "\\`")
-                    .replacingOccurrences(of: "$", with: "\\$")
-                    .replacingOccurrences(of: "</script>", with: "<\\/script>")
+                let escaped = MarkdownWebView.escapeForJS(markdown)
                 webView.evaluateJavaScript("renderMarkdown(`\(escaped)`);")
             }
             pendingMarkdown = nil
@@ -184,8 +156,6 @@ final class DropOverlayView: NSView {
     var dropHandler: ((URL) -> Void)?
     private var isDragging = false
 
-    private static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
-
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL])
@@ -220,7 +190,7 @@ final class DropOverlayView: NSView {
     override func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
         isDragging = false
         guard let url = extractFileURL(sender),
-              Self.markdownExtensions.contains(url.pathExtension.lowercased())
+              Constants.markdownExtensions.contains(url.pathExtension.lowercased())
         else {
             return false
         }
@@ -234,7 +204,7 @@ final class DropOverlayView: NSView {
 
     private func hasMarkdownFile(_ info: NSDraggingInfo) -> Bool {
         guard let url = extractFileURL(info) else { return false }
-        return Self.markdownExtensions.contains(url.pathExtension.lowercased())
+        return Constants.markdownExtensions.contains(url.pathExtension.lowercased())
     }
 
     private func extractFileURL(_ info: NSDraggingInfo) -> URL? {

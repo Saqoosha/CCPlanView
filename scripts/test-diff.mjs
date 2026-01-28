@@ -22,9 +22,9 @@ const html = readFileSync(join(projectRoot, 'Sources/CCPlanView/Resources/index.
 const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
 const scriptContent = scriptMatch[1];
 
-// Extract function bodies (from range() to showEmpty())
+// Extract function bodies (from range() to setTheme())
 const funcStart = scriptContent.indexOf('function range(');
-const funcEnd = scriptContent.indexOf('function showEmpty()');
+const funcEnd = scriptContent.indexOf('function setTheme(');
 const diffCode = scriptContent.substring(funcStart, funcEnd);
 
 // Evaluate diff functions in a context

@@ -8,6 +8,7 @@ struct ContentView: View {
 
     private var backgroundColor: Color {
         colorScheme == .dark
+            // GitHub dark theme background (#0d1117)
             ? Color(nsColor: NSColor(red: 0.051, green: 0.067, blue: 0.09, alpha: 1))
             : Color.white
     }
@@ -44,7 +45,11 @@ struct ContentView: View {
 
     private func openFilePanel() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "md")!]
+        panel.allowedContentTypes = [
+            UTType(filenameExtension: "md"),
+            UTType(filenameExtension: "markdown"),
+            .plainText,
+        ].compactMap { $0 }
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
@@ -61,8 +66,6 @@ struct EmptyStateView: View {
     let onDrop: (URL) -> Void
 
     @State private var isTargeted = false
-
-    private static let markdownExtensions: Set<String> = ["md", "markdown", "mdown", "mkd"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -130,7 +133,7 @@ struct EmptyStateView: View {
         .onDrop(of: [.fileURL], isTargeted: $isTargeted) { providers in
             guard let provider = providers.first else { return false }
             _ = provider.loadObject(ofClass: URL.self) { url, _ in
-                if let url, Self.markdownExtensions.contains(url.pathExtension.lowercased()) {
+                if let url, Constants.markdownExtensions.contains(url.pathExtension.lowercased()) {
                     DispatchQueue.main.async {
                         onDrop(url)
                     }
