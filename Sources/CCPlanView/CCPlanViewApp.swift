@@ -8,9 +8,6 @@ struct CCPlanViewApp: App {
     var body: some Scene {
         WindowGroup(id: "main") {
             MainContentView()
-                .onReceive(NotificationCenter.default.publisher(for: .createNewWindow)) { _ in
-                    // This is received by existing windows, but we use openWindow in commands
-                }
         }
         .defaultSize(width: 800, height: 900)
         .windowStyle(.automatic)
@@ -204,5 +201,4 @@ struct EmptyStateView: View {
 
 extension Notification.Name {
     static let openFileInWindow = Notification.Name("openFileInWindow")
-    static let createNewWindow = Notification.Name("createNewWindow")
 }

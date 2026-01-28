@@ -51,28 +51,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    @objc func openDocument(_ sender: Any?) {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-
-        if panel.runModal() == .OK, let url = panel.url {
-            // If no windows exist, create one first
-            if NSApp.windows.filter({ $0.isVisible }).isEmpty {
-                WindowManager.shared.openFile(url)
-                // Trigger new window creation
-                NotificationCenter.default.post(name: .createNewWindow, object: nil)
-            } else {
-                NotificationCenter.default.post(
-                    name: .openFileInWindow,
-                    object: nil,
-                    userInfo: ["url": url]
-                )
-            }
-        }
-    }
-
     @objc private func windowDidBecomeKey(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         setupTitlebarDragView(for: window)
