@@ -3,7 +3,7 @@ import Foundation
 final class FileWatcher: Sendable {
     private let url: URL
     private let onChange: @Sendable () -> Void
-    private let queue = DispatchQueue(label: "sh.saqoo.markdown-viewer.filewatcher")
+    private let queue = DispatchQueue(label: "sh.saqoo.ccplanview.filewatcher")
 
     // nonisolated(unsafe) because DispatchSource is managed entirely on our serial queue
     nonisolated(unsafe) private var source: DispatchSourceFileSystemObject?

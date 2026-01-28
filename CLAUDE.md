@@ -1,4 +1,4 @@
-# Markdown Viewer - Project Guide
+# CCPlanView - Project Guide
 
 ## Overview
 
@@ -11,11 +11,11 @@ Lightweight macOS markdown viewer. Swift 6.0 + SwiftUI + WKWebView + vanilla JS.
 ./scripts/build.sh Release
 ```
 
-App output: `build/DerivedData/Build/Products/{Config}/Markdown Viewer.app`
+App output: `build/DerivedData/Build/Products/{Config}/CCPlanView.app`
 
 ## Architecture
 
-- **MarkdownViewerApp.swift** - `@main` entry, WindowGroup, File > Open menu
+- **CCPlanViewApp.swift** - `@main` entry, WindowGroup, File > Open menu
 - **AppDelegate.swift** - `application(_:open:)` for Finder/`open -a` file opening, passes to MarkdownDocument
 - **ContentView.swift** - Hosts MarkdownWebView
 - **MarkdownWebView.swift** - `NSViewRepresentable` wrapping WKWebView + DropContainerView/DropOverlayView for drag & drop
@@ -31,7 +31,7 @@ App output: `build/DerivedData/Build/Products/{Config}/Markdown Viewer.app`
 
 ## Project Config
 
-- **Bundle ID**: `sh.saqoo.markdown-viewer`
+- **Bundle ID**: `sh.saqoo.ccplanview`
 - **Deployment target**: macOS 14.0
 - **XcodeGen**: `project.yml` generates `.xcodeproj`
 - **Version control**: jj (Jujutsu)

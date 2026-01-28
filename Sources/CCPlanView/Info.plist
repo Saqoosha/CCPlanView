@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Markdown Viewer</string>
+	<string>CCPlanView</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
 		<dict>
@@ -30,13 +30,13 @@
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
-	<string>Markdown Viewer</string>
+	<string>CCPlanView</string>
 	<key>CFBundleIdentifier</key>
-	<string>sh.saqoo.markdown-viewer</string>
+	<string>sh.saqoo.ccplanview</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>Markdown Viewer</string>
+	<string>CCPlanView</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>

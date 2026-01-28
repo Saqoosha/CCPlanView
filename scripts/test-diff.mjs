@@ -13,12 +13,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
 
 // Load marked.js
-const markedCode = readFileSync(join(projectRoot, 'Sources/MarkdownViewer/Resources/marked.min.js'), 'utf-8');
+const markedCode = readFileSync(join(projectRoot, 'Sources/CCPlanView/Resources/marked.min.js'), 'utf-8');
 const markedModule = new Function(markedCode + '; return marked;')();
 const { Lexer } = markedModule;
 
 // Extract diff functions from index.html
-const html = readFileSync(join(projectRoot, 'Sources/MarkdownViewer/Resources/index.html'), 'utf-8');
+const html = readFileSync(join(projectRoot, 'Sources/CCPlanView/Resources/index.html'), 'utf-8');
 const scriptMatch = html.match(/<script>([\s\S]*?)<\/script>/);
 const scriptContent = scriptMatch[1];
 

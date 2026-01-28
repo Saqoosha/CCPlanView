@@ -8,7 +8,7 @@
 │                                                         │
 │  Finder / open -a ──▶ AppDelegate.application(_:open:)  │
 │  Drag & Drop ────────▶ DropOverlayView.performDrag...   │
-│  File > Open ────────▶ MarkdownViewerApp.openFile()     │
+│  File > Open ────────▶ CCPlanViewApp.openFile()     │
 │                                                         │
 │  All paths call ──────▶ MarkdownDocument.open(url:)     │
 └─────────────────────────┬───────────────────────────────┘
@@ -120,7 +120,7 @@ on every content change. `loadFileURL`:
 ## Module Dependency Graph
 
 ```
-MarkdownViewerApp (@main)
+CCPlanViewApp (@main)
   ├─ AppDelegate
   │   └─ MarkdownDocument
   └─ ContentView

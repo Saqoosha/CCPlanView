@@ -22,9 +22,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.titlebarAppearsTransparent = true
         window.backgroundColor = .white
         window.contentViewController = hostingController
-        window.title = "Markdown Viewer"
+        window.title = "CCPlanView"
         window.setFrameAutosaveName("MainWindow")
         window.makeKeyAndOrderFront(nil)
+
+        // Add invisible draggable view over titlebar area so window can be moved.
+        // Must be added to themeFrame (contentView's superview) to sit above WKWebView.
+        if let themeFrame = window.contentView?.superview {
+            let dragView = TitlebarDragView()
+            dragView.translatesAutoresizingMaskIntoConstraints = false
+            themeFrame.addSubview(dragView)
+            NSLayoutConstraint.activate([
+                dragView.topAnchor.constraint(equalTo: themeFrame.topAnchor),
+                dragView.leadingAnchor.constraint(equalTo: themeFrame.leadingAnchor),
+                dragView.trailingAnchor.constraint(equalTo: themeFrame.trailingAnchor),
+                dragView.heightAnchor.constraint(equalToConstant: 52),
+            ])
+        }
         self.window = window
 
         setupMenu()
@@ -71,9 +85,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // App menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About Markdown Viewer", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About CCPlanView", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit Markdown Viewer", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit CCPlanView", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 
@@ -129,5 +143,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 document.open(url: url)
             }
         }
+    }
+}
+
+// Transparent view that enables window dragging over the titlebar area.
+// WKWebView consumes all mouse events, so this sits on top to intercept drags.
+final class TitlebarDragView: NSView {
+    override func mouseDown(with event: NSEvent) {
+        window?.performDrag(with: event)
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        // Only intercept in the titlebar region (no buttons)
+        let local = convert(point, from: superview)
+        return bounds.contains(local) ? self : nil
     }
 }
