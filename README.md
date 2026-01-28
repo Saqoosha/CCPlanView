@@ -1,6 +1,10 @@
 # CCPlanView
 
-Lightweight macOS markdown viewer with live reload.
+<p align="center">
+  <img src="images/appicon.png" width="128" height="128" alt="CCPlanView icon">
+  <br>
+  Lightweight macOS markdown viewer for Claude Code plans.
+</p>
 
 ## Features
 
@@ -51,8 +55,6 @@ Add the following to your `~/.config/claude/settings.json`:
 ```
 
 This hook triggers right before Claude presents a plan for approval, opening the latest plan file in CCPlanView. Thanks to live reload, the content updates automatically as the plan is finalized.
-
----
 
 ## Development
 

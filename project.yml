@@ -41,6 +41,7 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundlePackageType: APPL
+        CFBundleIconName: AppIcon
         CFBundleExecutable: "CCPlanView"
         LSMinimumSystemVersion: "14.0"
         NSHighResolutionCapable: true

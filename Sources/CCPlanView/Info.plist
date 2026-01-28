@@ -31,6 +31,8 @@
 	</array>
 	<key>CFBundleExecutable</key>
 	<string>CCPlanView</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
 	<string>sh.saqoo.ccplanview</string>
 	<key>CFBundleInfoDictionaryVersion</key>
