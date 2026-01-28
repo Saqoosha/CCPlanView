@@ -6,27 +6,26 @@
 ┌─────────────────────────────────────────────────────────┐
 │ File Open Triggers                                      │
 │                                                         │
-│  Finder / open -a ──▶ AppDelegate.application(_:open:)  │
-│  Drag & Drop ────────▶ DropOverlayView.performDrag...   │
-│  File > Open ────────▶ AppDelegate.openFile()           │
-│                                                         │
-│  All paths call ──────▶ MarkdownDocument.open(url:)     │
-│                         (guards against duplicate URL)   │
+│  Finder / open -a ──▶ DocumentGroup creates new window  │
+│  File > Open ────────▶ DocumentGroup creates new window │
+│  Drag & Drop ────────▶ MarkdownFileDocument.open(url:)  │
+│                        (opens in same window)           │
 └─────────────────────────┬───────────────────────────────┘
                           │
                           ▼
 ┌─────────────────────────────────────────────────────────┐
-│ MarkdownDocument (ObservableObject)                     │
+│ MarkdownFileDocument (ReferenceFileDocument)            │
 │                                                         │
 │  @Published fileURL ──────────────────────────────────  │
 │  @Published markdownContent ──▶ triggers SwiftUI update │
-│  @Published windowTitle                                 │
 │                                                         │
-│  open(url:) ──▶ loadContent() + startWatching()         │
+│  init(configuration:) ──▶ loads content from FileWrapper│
+│  startWatching(url:) ──▶ syncs content + starts watcher │
+│  open(url:) ──▶ reloadContent() + restarts watcher      │
 │                      │              │                   │
 │                      ▼              ▼                   │
-│              String(contentsOf:)  FileWatcher            │
-│                                   │ onChange ──▶ loadContent()
+│              String(contentsOf:)  FileWatcher           │
+│                                   │ onChange ──▶ reloadContent()
 └─────────────────────────┬───────────────────────────────┘
                           │ @Published markdownContent
                           ▼
@@ -36,11 +35,10 @@
 │  updateNSView() ──▶ evaluateJavaScript()                │
 │    • setTheme(isDark) ──▶ switches highlight.js CSS     │
 │    • renderMarkdown(src) ──▶ marked.parse + hljs        │
-│    • showEmpty()                                        │
 │                                                         │
 │  Coordinator (WKNavigationDelegate)                     │
 │    • Tracks isPageLoaded                                │
-│    • Buffers pending content until page ready            │
+│    • Buffers pending content until page ready           │
 │    • Prevents duplicate renders via lastMarkdown check  │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -48,22 +46,24 @@
 ## View Hierarchy (AppKit Layer)
 
 ```
-NSWindow (titlebarAppearsTransparent, fullSizeContentView)
- ├─ themeFrame
- │   └─ TitlebarDragView      ← transparent, intercepts mouse drags
- └─ NSHostingController
-     └─ ContentView (SwiftUI)
-         └─ ZStack
-             ├─ backgroundColor
-             ├─ MarkdownWebView (NSViewRepresentable)
-             │   └─ DropContainerView (NSView)
-             │       ├─ WKWebView          ← renders markdown
-             │       └─ DropOverlayView    ← transparent, on top
-             │           • registerForDraggedTypes([.fileURL])
-             │           • hitTest() returns nil unless dragging
-             │           • draggingEntered/performDragOperation
-             └─ LinearGradient             ← fades titlebar into content
-                 • allowsHitTesting(false)
+DocumentGroup (manages multiple windows)
+ └─ NSWindow (titlebarAppearsTransparent, fullSizeContentView)
+     ├─ themeFrame
+     │   └─ TitlebarDragView      ← transparent, intercepts mouse drags
+     │                              (added via didBecomeKeyNotification)
+     └─ NSHostingController
+         └─ ContentView (SwiftUI)
+             └─ ZStack
+                 ├─ backgroundColor
+                 ├─ MarkdownWebView (NSViewRepresentable)
+                 │   └─ DropContainerView (NSView)
+                 │       ├─ WKWebView          ← renders markdown
+                 │       └─ DropOverlayView    ← transparent, on top
+                 │           • registerForDraggedTypes([.fileURL])
+                 │           • hitTest() returns nil unless dragging
+                 │           • draggingEntered/performDragOperation
+                 └─ LinearGradient             ← fades titlebar into content
+                     • allowsHitTesting(false)
 ```
 
 ### Why TitlebarDragView?
@@ -99,18 +99,19 @@ interfere with the titlebar buttons or drag view.
 
 ```
 applicationDidFinishLaunching
-  ├─ Create NSWindow + NSHostingController(ContentView)
-  ├─ Add TitlebarDragView to themeFrame
-  ├─ Setup menu bar (App, File, Edit, View, Window)
-  └─ Process pendingURL (if file was opened before window was ready)
+  └─ Register for NSWindow.didBecomeKeyNotification
 
-application(_:open:)
-  ├─ Window ready ──▶ document.open(url:) immediately
-  └─ Window nil ───▶ store as pendingURL for later
+windowDidBecomeKey (notification)
+  └─ setupTitlebarDragView(for: window)
+      ├─ Check if TitlebarDragView already added
+      ├─ Set window.titlebarAppearsTransparent = true
+      └─ Add TitlebarDragView to themeFrame
 
 applicationShouldTerminateAfterLastWindowClosed ──▶ true
-applicationShouldHandleReopen ──▶ restore window + activate
 ```
+
+Note: File opening and menu setup are now handled by SwiftUI's DocumentGroup.
+Each file opens in a new window automatically.
 
 ## FileWatcher
 
@@ -175,16 +176,17 @@ Granular diff functions handle nested structures: `diffListItems()`, `diffTableR
 
 ```
 CCPlanViewApp (@main)
-  └─ AppDelegate
-      ├─ MarkdownDocument
-      │   └─ FileWatcher
-      └─ NSWindow
-          └─ ContentView
-              └─ MarkdownWebView
-                  ├─ DropContainerView
-                  │   └─ DropOverlayView
-                  └─ WKWebView + Coordinator
-                      └─ index.html (Resources)
+  ├─ DocumentGroup(viewing: MarkdownFileDocument)
+  │   └─ MarkdownFileDocument (ReferenceFileDocument)
+  │       └─ FileWatcher
+  ├─ AppDelegate (via @NSApplicationDelegateAdaptor)
+  │   └─ TitlebarDragView
+  └─ ContentView
+      └─ MarkdownWebView
+          ├─ DropContainerView
+          │   └─ DropOverlayView
+          └─ WKWebView + Coordinator
+              └─ index.html (Resources)
 ```
 
 No external Swift dependencies. All JS/CSS libraries are vendored in `Resources/`.

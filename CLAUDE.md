@@ -15,11 +15,11 @@ App output: `build/DerivedData/Build/Products/{Config}/CCPlanView.app`
 
 ## Architecture
 
-- **CCPlanViewApp.swift** - `@main` entry, WindowGroup, File > Open menu
-- **AppDelegate.swift** - `application(_:open:)` for Finder/`open -a` file opening, passes to MarkdownDocument
+- **CCPlanViewApp.swift** - `@main` entry with `DocumentGroup(viewing:)` for multi-window support
+- **AppDelegate.swift** - Sets up TitlebarDragView on new windows via `NSWindow.didBecomeKeyNotification`
 - **ContentView.swift** - Hosts MarkdownWebView
 - **MarkdownWebView.swift** - `NSViewRepresentable` wrapping WKWebView + DropContainerView/DropOverlayView for drag & drop
-- **MarkdownDocument.swift** - `ObservableObject` managing file URL, content, and FileWatcher
+- **MarkdownFileDocument.swift** - `ReferenceFileDocument` conforming document with FileWatcher integration
 - **FileWatcher.swift** - `DispatchSource` file monitoring with debounce, handles vim-style delete+create saves
 - **Resources/index.html** - HTML template with marked.js + highlight.js, called via `evaluateJavaScript`
 
