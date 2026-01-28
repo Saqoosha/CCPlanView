@@ -17,7 +17,10 @@ final class FileWatcher: Sendable {
     }
 
     deinit {
-        stop()
+        // Must clean up synchronously in deinit to avoid capturing self after deallocation
+        source?.cancel()
+        source = nil
+        fileDescriptor = -1
     }
 
     func start() {
@@ -29,7 +32,7 @@ final class FileWatcher: Sendable {
     }
 
     func stop() {
-        queue.async { [self] in
+        queue.sync {
             isRunning = false
             stopWatching()
         }

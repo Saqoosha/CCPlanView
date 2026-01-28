@@ -9,6 +9,7 @@ final class MarkdownDocument: ObservableObject {
     private var fileWatcher: FileWatcher?
 
     func open(url: URL) {
+        guard url != fileURL else { return }
         fileURL = url
         windowTitle = url.lastPathComponent
         loadContent()

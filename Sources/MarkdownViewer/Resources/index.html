@@ -32,6 +32,60 @@
             text-align: center;
             line-height: 1.6;
         }
+        .changed-block {
+            background-color: #dcffdc;
+            border-radius: 4px;
+        }
+        .markdown-body table tr.changed-block,
+        .markdown-body table tr.changed-block > td,
+        .markdown-body table tr.changed-block > th {
+            background-color: #dcffdc;
+        }
+        [data-color-mode="dark"] .changed-block {
+            background-color: rgba(220, 255, 220, 0.15);
+        }
+        [data-color-mode="dark"] .markdown-body table tr.changed-block,
+        [data-color-mode="dark"] .markdown-body table tr.changed-block > td,
+        [data-color-mode="dark"] .markdown-body table tr.changed-block > th {
+            background-color: rgba(220, 255, 220, 0.15);
+        }
+        .deleted-block {
+            background-color: #ffdce0;
+            border-radius: 4px;
+            text-decoration: line-through;
+            opacity: 0.7;
+        }
+        .markdown-body table tr.deleted-block,
+        .markdown-body table tr.deleted-block > td,
+        .markdown-body table tr.deleted-block > th {
+            background-color: #ffdce0;
+        }
+        [data-color-mode="dark"] .deleted-block {
+            background-color: rgba(255, 220, 224, 0.15);
+        }
+        [data-color-mode="dark"] .markdown-body table tr.deleted-block,
+        [data-color-mode="dark"] .markdown-body table tr.deleted-block > td,
+        [data-color-mode="dark"] .markdown-body table tr.deleted-block > th {
+            background-color: rgba(255, 220, 224, 0.15);
+        }
+        .code-line-changed {
+            background-color: #dcffdc;
+            display: inline-block;
+            width: 100%;
+        }
+        .code-line-deleted {
+            background-color: #ffdce0;
+            text-decoration: line-through;
+            opacity: 0.7;
+            display: inline-block;
+            width: 100%;
+        }
+        [data-color-mode="dark"] .code-line-changed {
+            background-color: rgba(220, 255, 220, 0.15);
+        }
+        [data-color-mode="dark"] .code-line-deleted {
+            background-color: rgba(255, 220, 224, 0.15);
+        }
     </style>
 </head>
 <body>
@@ -44,6 +98,394 @@
             breaks: true,
             gfm: true
         });
+
+        let previousTokens = null;
+
+        function range(count) {
+            return Array.from({ length: count }, (_, i) => i);
+        }
+
+        function lcsPairs(aIndices, bIndices, isMatch) {
+            const m = aIndices.length;
+            const n = bIndices.length;
+            if (m === 0 || n === 0) return [];
+            // Guard: skip LCS for very large inputs to avoid O(m*n) blowup
+            if (m * n > 250000) return [];
+            const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+            for (let i = 1; i <= m; i++) {
+                for (let j = 1; j <= n; j++) {
+                    if (isMatch(aIndices[i - 1], bIndices[j - 1])) {
+                        dp[i][j] = dp[i - 1][j - 1] + 1;
+                    } else {
+                        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+                    }
+                }
+            }
+            const pairs = [];
+            let i = m, j = n;
+            while (i > 0 && j > 0) {
+                const aIdx = aIndices[i - 1];
+                const bIdx = bIndices[j - 1];
+                if (isMatch(aIdx, bIdx)) {
+                    pairs.push([aIdx, bIdx]);
+                    i--; j--;
+                } else {
+                    const up = dp[i - 1][j];
+                    const left = dp[i][j - 1];
+                    if (up > left) {
+                        i--;
+                    } else if (left > up) {
+                        j--;
+                    } else {
+                        // Tie-break: prefer direction closer to the diagonal
+                        if (aIdx >= bIdx) i--; else j--;
+                    }
+                }
+            }
+            return pairs;
+        }
+
+        function greedyPairByDistance(newCount, oldCount, isMatch, pairMap, pairedOldSet) {
+            for (let newIdx = 0; newIdx < newCount; newIdx++) {
+                if (pairMap.has(newIdx)) continue;
+                let bestOld = -1;
+                let bestDistance = Infinity;
+                for (let oldIdx = 0; oldIdx < oldCount; oldIdx++) {
+                    if (pairedOldSet.has(oldIdx)) continue;
+                    if (!isMatch(oldIdx, newIdx)) continue;
+                    const distance = Math.abs(oldIdx - newIdx);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        bestOld = oldIdx;
+                    }
+                }
+                if (bestOld !== -1) {
+                    pairMap.set(newIdx, bestOld);
+                    pairedOldSet.add(bestOld);
+                }
+            }
+        }
+
+        // Returns { changes: Map<newIdx, changeInfo>, deletions: [{beforeNewIdx, token}] }
+        // changeInfo = { type: 'added' } | { type: 'modified', oldToken } | { type: 'list', listDiff }
+        // listDiff = { changed: Map<itemIdx, oldItem|null>, deleted: [{beforeIdx, item}] }
+        function diffTokens(oldTokens, newTokens) {
+            const filter = tokens => tokens.filter(t => t.type !== 'space');
+            const oldFiltered = filter(oldTokens);
+            const newFiltered = filter(newTokens);
+
+            const changes = new Map();
+            const deletions = []; // { beforeNewIdx, token }
+
+            function compareBlock(oldToken, newToken, idx) {
+                if (oldToken.raw === newToken.raw) return;
+                if (oldToken.type === 'list' && newToken.type === 'list') {
+                    const listDiff = diffListItems(oldToken.items, newToken.items);
+                    if (listDiff.changed.size > 0 || listDiff.deleted.length > 0) {
+                        changes.set(idx, { type: 'list', listDiff });
+                    }
+                    return;
+                }
+                if (oldToken.type === 'table' && newToken.type === 'table') {
+                    const tableDiff = diffTableRows(oldToken, newToken);
+                    if (tableDiff.headerChanged || tableDiff.changed.size > 0 || tableDiff.deleted.length > 0) {
+                        changes.set(idx, { type: 'table', tableDiff });
+                    }
+                    return;
+                }
+                if (oldToken.type === 'code' && newToken.type === 'code') {
+                    const codeDiff = diffCodeLines(oldToken, newToken);
+                    if (codeDiff.changed.size > 0 || codeDiff.deleted.length > 0 || codeDiff.langChanged) {
+                        changes.set(idx, { type: 'code', codeDiff });
+                    }
+                    return;
+                }
+                if (oldToken.type === 'blockquote' && newToken.type === 'blockquote') {
+                    const bqDiff = diffTokens(oldToken.tokens, newToken.tokens);
+                    if (bqDiff.changes.size > 0 || bqDiff.deletions.length > 0) {
+                        changes.set(idx, { type: 'blockquote', bqDiff });
+                    }
+                    return;
+                }
+                changes.set(idx, { type: 'modified', oldToken });
+            }
+
+            // Phase 1: LCS with exact raw match to find identical blocks
+            const m = oldFiltered.length;
+            const n = newFiltered.length;
+            const exactPaired = new Map();
+            const exactPairedOld = new Set();
+            const exactPairs = lcsPairs(
+                range(m), range(n),
+                (oi, ni) => oldFiltered[oi].raw === newFiltered[ni].raw
+            );
+            for (const [oi, ni] of exactPairs) {
+                exactPaired.set(ni, oi);
+                exactPairedOld.add(oi);
+            }
+
+            // Phase 1b: Greedily pair remaining exact-matching blocks by distance
+            greedyPairByDistance(
+                n, m,
+                (o, k) => oldFiltered[o].raw === newFiltered[k].raw,
+                exactPaired, exactPairedOld
+            );
+
+            // Phase 2: LCS type match for remaining unmatched (order-preserving)
+            const unmatchedOld = [];
+            const unmatchedNew = [];
+            for (let k = 0; k < m; k++) { if (!exactPairedOld.has(k)) unmatchedOld.push(k); }
+            for (let k = 0; k < n; k++) { if (!exactPaired.has(k)) unmatchedNew.push(k); }
+
+            const typePaired = new Map();
+            const typePairedOld = new Set();
+            if (unmatchedOld.length > 0 && unmatchedNew.length > 0) {
+                const typePairs = lcsPairs(
+                    unmatchedOld, unmatchedNew,
+                    (oi, ni) => oldFiltered[oi].type === newFiltered[ni].type
+                );
+                for (const [oi, ni] of typePairs) {
+                    typePaired.set(ni, oi);
+                    typePairedOld.add(oi);
+                }
+            }
+
+            // Phase 2b: Greedily pair remaining type-matching blocks by distance
+            greedyPairByDistance(
+                n, m,
+                (o, k) => !exactPaired.has(k) && !exactPairedOld.has(o) &&
+                    oldFiltered[o].type === newFiltered[k].type,
+                typePaired, typePairedOld
+            );
+
+            const allPairedOld = new Set([...exactPairedOld, ...typePairedOld]);
+
+            // Compare type-paired blocks, mark rest as added
+            for (let k = 0; k < n; k++) {
+                if (exactPaired.has(k)) continue;
+                if (typePaired.has(k)) {
+                    compareBlock(oldFiltered[typePaired.get(k)], newFiltered[k], k);
+                } else {
+                    changes.set(k, { type: 'added' });
+                }
+            }
+
+            // Find deleted old blocks
+            const oldToNewBlock = new Map();
+            for (const [ni, oi] of exactPaired) oldToNewBlock.set(oi, ni);
+            for (const [ni, oi] of typePaired) oldToNewBlock.set(oi, ni);
+
+            for (let oi = 0; oi < m; oi++) {
+                if (allPairedOld.has(oi)) continue;
+                let beforeNewIdx = -1;
+                for (let search = oi + 1; search < m; search++) {
+                    if (oldToNewBlock.has(search)) {
+                        beforeNewIdx = oldToNewBlock.get(search);
+                        break;
+                    }
+                }
+                if (beforeNewIdx === -1) {
+                    for (let search = oi - 1; search >= 0; search--) {
+                        if (oldToNewBlock.has(search)) {
+                            beforeNewIdx = oldToNewBlock.get(search) + 1;
+                            break;
+                        }
+                    }
+                    if (beforeNewIdx === -1) beforeNewIdx = 0;
+                }
+                deletions.push({ beforeNewIdx, token: oldFiltered[oi] });
+            }
+            deletions.sort((a, b) => a.beforeNewIdx - b.beforeNewIdx);
+
+            return { changes, deletions };
+        }
+
+        // Returns { changed: Map<itemIdx, changeInfo>, deleted: [{beforeIdx, item}] }
+        // changeInfo = null (added) | { type: 'nestedList', nestedDiff } (sub-list changed)
+        function diffListItems(oldItems, newItems) {
+            const text = item => item.text;
+            const changed = new Map();
+            const deleted = [];
+
+            // Helper: get parent text of a list item (excluding nested lists)
+            const parentText = item => {
+                if (!item.tokens) return item.text;
+                // Collect text from all non-list tokens to handle bold/link/etc.
+                return item.tokens
+                    .filter(t => t.type !== 'list' && t.type !== 'space')
+                    .map(t => t.raw || t.text || '')
+                    .join('');
+            };
+            // Helper: get nested list from item tokens
+            const nestedList = item => {
+                if (!item.tokens) return null;
+                return item.tokens.find(t => t.type === 'list') || null;
+            };
+
+            const m = oldItems.length, n = newItems.length;
+            const oldToNew = new Map();
+            const pairs = lcsPairs(
+                range(m), range(n),
+                (oi, ni) => text(oldItems[oi]) === text(newItems[ni])
+            );
+            for (const [oi, ni] of pairs) {
+                oldToNew.set(oi, ni);
+            }
+
+            // Phase 2: pair unmatched items with same parent text (for nested list diff)
+            const matchedOld = new Set(oldToNew.keys());
+            const matchedNew = new Set(oldToNew.values());
+            const unmatchedOld = range(m).filter(i => !matchedOld.has(i));
+            const unmatchedNew = range(n).filter(i => !matchedNew.has(i));
+
+            const nestedPaired = new Map(); // newIdx → oldIdx
+            const nestedPairedOld = new Set();
+            if (unmatchedOld.length > 0 && unmatchedNew.length > 0) {
+                const nestPairs = lcsPairs(
+                    unmatchedOld, unmatchedNew,
+                    (oi, ni) => parentText(oldItems[oi]) === parentText(newItems[ni])
+                        && nestedList(oldItems[oi]) && nestedList(newItems[ni])
+                );
+                for (const [oi, ni] of nestPairs) {
+                    nestedPaired.set(ni, oi);
+                    nestedPairedOld.add(oi);
+                }
+                // Greedy fallback for remaining parent-text matches
+                greedyPairByDistance(
+                    n, m,
+                    (o, k) => !matchedNew.has(k) && !matchedOld.has(o)
+                        && !nestedPaired.has(k) && !nestedPairedOld.has(o)
+                        && parentText(oldItems[o]) === parentText(newItems[k])
+                        && nestedList(oldItems[o]) && nestedList(newItems[k]),
+                    nestedPaired, nestedPairedOld
+                );
+            }
+
+            const allMatchedOld = new Set([...matchedOld, ...nestedPairedOld]);
+            const allMatchedNew = new Set([...matchedNew, ...nestedPaired.keys()]);
+
+            // Build changes: added or nestedList diff
+            for (let k = 0; k < n; k++) {
+                if (matchedNew.has(k)) continue; // exact match, no change
+                if (nestedPaired.has(k)) {
+                    const oi = nestedPaired.get(k);
+                    const oldNested = nestedList(oldItems[oi]);
+                    const newNested = nestedList(newItems[k]);
+                    const nestedDiff = diffListItems(oldNested.items, newNested.items);
+                    if (nestedDiff.changed.size > 0 || nestedDiff.deleted.length > 0) {
+                        changed.set(k, { type: 'nestedList', nestedDiff });
+                    }
+                } else {
+                    changed.set(k, null); // added item
+                }
+            }
+
+            // Deleted items: find insertion position
+            for (let oi = 0; oi < m; oi++) {
+                if (allMatchedOld.has(oi)) continue;
+                let beforeIdx = -1;
+                for (let search = oi + 1; search < m; search++) {
+                    if (oldToNew.has(search)) { beforeIdx = oldToNew.get(search); break; }
+                    if (nestedPairedOld.has(search)) {
+                        // find newIdx for this old
+                        for (const [ni, o] of nestedPaired) { if (o === search) { beforeIdx = ni; break; } }
+                        if (beforeIdx !== -1) break;
+                    }
+                }
+                if (beforeIdx === -1) {
+                    for (let search = oi - 1; search >= 0; search--) {
+                        if (oldToNew.has(search)) { beforeIdx = oldToNew.get(search) + 1; break; }
+                        if (nestedPairedOld.has(search)) {
+                            for (const [ni, o] of nestedPaired) { if (o === search) { beforeIdx = ni + 1; break; } }
+                            if (beforeIdx !== -1) break;
+                        }
+                    }
+                    if (beforeIdx === -1) beforeIdx = 0;
+                }
+                deleted.push({ beforeIdx, item: oldItems[oi] });
+            }
+            deleted.sort((a, b) => a.beforeIdx - b.beforeIdx);
+            return { changed, deleted };
+        }
+
+        // Returns { headerChanged, changed: Map<rowIdx, oldCells|null>, deleted: [{beforeIdx, cells}] }
+        function diffTableRows(oldToken, newToken) {
+            const rowText = cells => cells.map(c => c.text).join('|');
+            const headerChanged = rowText(oldToken.header) !== rowText(newToken.header);
+            const oldRows = oldToken.rows;
+            const newRows = newToken.rows;
+            const changed = new Map();
+            const deleted = [];
+
+            const m = oldRows.length, n = newRows.length;
+            const oldToNew = new Map();
+            const pairs = lcsPairs(
+                range(m), range(n),
+                (oi, ni) => rowText(oldRows[oi]) === rowText(newRows[ni])
+            );
+            for (const [oi, ni] of pairs) {
+                oldToNew.set(oi, ni);
+            }
+            const matchedNew = new Set(oldToNew.values());
+            for (let k = 0; k < n; k++) {
+                if (!matchedNew.has(k)) changed.set(k, null);
+            }
+            for (let oi = 0; oi < m; oi++) {
+                if (oldToNew.has(oi)) continue;
+                let beforeIdx = -1;
+                for (let search = oi + 1; search < m; search++) {
+                    if (oldToNew.has(search)) { beforeIdx = oldToNew.get(search); break; }
+                }
+                if (beforeIdx === -1) {
+                    for (let search = oi - 1; search >= 0; search--) {
+                        if (oldToNew.has(search)) { beforeIdx = oldToNew.get(search) + 1; break; }
+                    }
+                    if (beforeIdx === -1) beforeIdx = 0;
+                }
+                deleted.push({ beforeIdx, cells: oldRows[oi] });
+            }
+            deleted.sort((a, b) => a.beforeIdx - b.beforeIdx);
+            return { headerChanged, changed, deleted };
+        }
+
+        // Returns { changed: Map<lineIdx, oldLine|null>, deleted: [{beforeIdx, line}], langChanged }
+        function diffCodeLines(oldToken, newToken) {
+            const oldLines = oldToken.text.split('\n');
+            const newLines = newToken.text.split('\n');
+            const langChanged = (oldToken.lang || '') !== (newToken.lang || '');
+            const changed = new Map();
+            const deleted = [];
+
+            const m = oldLines.length, n = newLines.length;
+            const oldToNew = new Map();
+            const pairs = lcsPairs(
+                range(m), range(n),
+                (oi, ni) => oldLines[oi] === newLines[ni]
+            );
+            for (const [oi, ni] of pairs) {
+                oldToNew.set(oi, ni);
+            }
+            const matchedNew = new Set(oldToNew.values());
+            for (let k = 0; k < n; k++) {
+                if (!matchedNew.has(k)) changed.set(k, null);
+            }
+            for (let oi = 0; oi < m; oi++) {
+                if (oldToNew.has(oi)) continue;
+                // Place deleted line right after previous matched line's new position
+                // This ensures deleted(red) appears before added(green) at the same position
+                let beforeIdx = -1;
+                for (let search = oi - 1; search >= 0; search--) {
+                    if (oldToNew.has(search)) { beforeIdx = oldToNew.get(search) + 1; break; }
+                }
+                if (beforeIdx === -1) {
+                    // No previous match — must be at the start
+                    beforeIdx = 0;
+                }
+                deleted.push({ beforeIdx, line: oldLines[oi] });
+            }
+            deleted.sort((a, b) => a.beforeIdx - b.beforeIdx);
+            return { changed, deleted, langChanged };
+        }
 
         function setTheme(isDark) {
             const link = document.getElementById('highlight-theme');
@@ -60,6 +502,14 @@
                 ? window.scrollY / document.documentElement.scrollHeight
                 : 0;
 
+            const newTokens = marked.Lexer.lex(source);
+            let diffResult = null;
+
+            if (previousTokens !== null) {
+                diffResult = diffTokens(previousTokens, newTokens);
+            }
+            previousTokens = newTokens;
+
             contentEl.innerHTML = marked.parse(source);
             contentEl.style.display = 'block';
             emptyEl.style.display = 'none';
@@ -68,14 +518,338 @@
                 hljs.highlightElement(block);
             });
 
-            requestAnimationFrame(() => {
-                window.scrollTo(0, document.documentElement.scrollHeight * scrollRatio);
-            });
+            const hasChanges = diffResult &&
+                (diffResult.changes.size > 0 || diffResult.deletions.length > 0);
+
+            if (hasChanges) {
+                let firstChanged = null;
+                const setFirst = el => { if (firstChanged === null) firstChanged = el; };
+
+                // Helper: insert old version (red) before an element
+                function insertOldBlock(oldToken, beforeEl) {
+                    const wrapper = document.createElement('div');
+                    wrapper.classList.add('deleted-block');
+                    wrapper.innerHTML = marked.parse(oldToken.raw);
+                    if (beforeEl) {
+                        contentEl.insertBefore(wrapper, beforeEl);
+                    } else {
+                        contentEl.appendChild(wrapper);
+                    }
+                    return wrapper;
+                }
+
+                // Helper: apply list diff to a <ul>/<ol> element (recursive for nested lists)
+                function applyListDiff(listEl, ld, setFirst) {
+                    const listItems = listEl.querySelectorAll(':scope > li');
+
+                    // Changed list items
+                    const sortedItems = [...ld.changed.entries()].sort((a, b) => a[0] - b[0]);
+                    for (const [subIdx, changeInfo] of sortedItems) {
+                        const li = listItems[subIdx];
+                        if (!li) continue;
+
+                        if (changeInfo === null) {
+                            // Added item
+                            li.classList.add('changed-block');
+                            setFirst(li);
+                        } else if (changeInfo.type === 'nestedList') {
+                            // Nested list changed: recurse into the sub-list
+                            const nestedUl = li.querySelector(':scope > ul, :scope > ol');
+                            if (nestedUl) {
+                                applyListDiff(nestedUl, changeInfo.nestedDiff, setFirst);
+                            }
+                        }
+                    }
+
+                    // Deleted list items
+                    for (let di = 0; di < ld.deleted.length; di++) {
+                        const { beforeIdx, item } = ld.deleted[di];
+                        const delLi = document.createElement('li');
+                        delLi.classList.add('deleted-block');
+                        // Use raw to preserve nested lists and block content
+                        const parsedItem = marked.parse(item.raw);
+                        // marked.parse wraps in <ul><li>...</li></ul>, extract inner li content
+                        const tmpLi = document.createElement('div');
+                        tmpLi.innerHTML = parsedItem;
+                        const innerLi = tmpLi.querySelector('li');
+                        delLi.innerHTML = innerLi ? innerLi.innerHTML : marked.parseInline(item.text);
+                        const refLi = listItems[beforeIdx];
+                        if (refLi) {
+                            listEl.insertBefore(delLi, refLi);
+                        } else {
+                            listEl.appendChild(delLi);
+                        }
+                        setFirst(delLi);
+                    }
+                }
+
+                // Build token-index → DOM element mapping
+                // A single token may produce multiple DOM children (e.g. raw HTML),
+                // so we render each token individually to count its elements.
+                const allChildren = Array.from(contentEl.children);
+                const childRefs = []; // childRefs[tokenIdx] = DOM element (first element for that token)
+                {
+                    const tmpDiv = document.createElement('div');
+                    const newFiltered = newTokens.filter(t => t.type !== 'space');
+                    let childOffset = 0;
+                    for (let ti = 0; ti < newFiltered.length; ti++) {
+                        childRefs[ti] = allChildren[childOffset] || null;
+                        // Count how many DOM elements this token produces
+                        tmpDiv.innerHTML = marked.parse(newFiltered[ti].raw);
+                        const elCount = tmpDiv.children.length || 1;
+                        childOffset += elCount;
+                    }
+                }
+
+                // Insert deleted blocks FIRST (red) - must come before change processing
+                // so that when both deletions and modified-old target the same childRef,
+                // deletions appear above (correct original order)
+                for (let di = 0; di < diffResult.deletions.length; di++) {
+                    const { beforeNewIdx, token } = diffResult.deletions[di];
+                    const oldEl = insertOldBlock(token, childRefs[beforeNewIdx] || null);
+                    setFirst(oldEl);
+                }
+
+                // Apply changes (uses snapshotted refs, unaffected by deletion inserts)
+                for (const [idx, detail] of diffResult.changes) {
+                    const el = childRefs[idx];
+                    if (!el) continue;
+
+                    if (detail.type === 'added') {
+                        // New block: green only
+                        el.classList.add('changed-block');
+                        setFirst(el);
+                    } else if (detail.type === 'modified') {
+                        // Modified block: insert old (red) before new (green)
+                        el.classList.add('changed-block');
+                        const oldEl = insertOldBlock(detail.oldToken, el);
+                        setFirst(oldEl);
+                    } else if (detail.type === 'list') {
+                        applyListDiff(el, detail.listDiff, setFirst);
+                    } else if (detail.type === 'table') {
+                        const td = detail.tableDiff;
+                        const tbody = el.querySelector('tbody');
+                        if (!tbody) continue;
+                        const rows = tbody.querySelectorAll(':scope > tr');
+
+                        // Header change
+                        if (td.headerChanged) {
+                            const thead = el.querySelector('thead');
+                            if (thead) { thead.classList.add('changed-block'); setFirst(thead); }
+                        }
+
+                        // Changed rows (forward)
+                        const sortedRows = [...td.changed.entries()].sort((a, b) => a[0] - b[0]);
+                        for (const [rowIdx, oldCells] of sortedRows) {
+                            const tr = rows[rowIdx];
+                            if (!tr) continue;
+                            tr.classList.add('changed-block');
+                            if (oldCells) {
+                                const delTr = document.createElement('tr');
+                                delTr.classList.add('deleted-block');
+                                delTr.innerHTML = oldCells.map(c => `<td>${marked.parseInline(c.text)}</td>`).join('');
+                                tbody.insertBefore(delTr, tr);
+                                setFirst(delTr);
+                            } else {
+                                setFirst(tr);
+                            }
+                        }
+
+                        // Deleted rows
+                        for (let di = 0; di < td.deleted.length; di++) {
+                            const { beforeIdx, cells } = td.deleted[di];
+                            const delTr = document.createElement('tr');
+                            delTr.classList.add('deleted-block');
+                            delTr.innerHTML = cells.map(c => `<td>${marked.parseInline(c.text)}</td>`).join('');
+                            const refTr = rows[beforeIdx];
+                            if (refTr) {
+                                tbody.insertBefore(delTr, refTr);
+                            } else {
+                                tbody.appendChild(delTr);
+                            }
+                            setFirst(delTr);
+                        }
+                    } else if (detail.type === 'code') {
+                        const cd = detail.codeDiff;
+                        const codeEl = el.querySelector('code');
+                        if (!codeEl) continue;
+
+                        // Highlight per-line to avoid breaking multiline spans
+                        const lang = codeEl.className.match(/language-(\S+)/)?.[1] || '';
+                        const textLines = codeEl.textContent.split('\n');
+                        const highlightLine = line => {
+                            try {
+                                return lang ? hljs.highlight(line, { language: lang }).value : hljs.highlightAuto(line).value;
+                            } catch { return line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+                        };
+                        const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+                        // Group deleted lines by beforeIdx
+                        const deletedByIdx = new Map();
+                        for (const { beforeIdx, line } of cd.deleted) {
+                            if (!deletedByIdx.has(beforeIdx)) deletedByIdx.set(beforeIdx, []);
+                            deletedByIdx.get(beforeIdx).push(line);
+                        }
+
+                        const newHTMLLines = [];
+                        for (let li = 0; li < textLines.length; li++) {
+                            const hl = highlightLine(textLines[li]);
+                            if (cd.changed.has(li) && deletedByIdx.has(li)) {
+                                for (const dLine of deletedByIdx.get(li)) {
+                                    newHTMLLines.push(`<span class="code-line-deleted">${escHtml(dLine)}</span>`);
+                                }
+                                deletedByIdx.delete(li);
+                                newHTMLLines.push(`<span class="code-line-changed">${hl}</span>`);
+                            } else if (deletedByIdx.has(li)) {
+                                for (const dLine of deletedByIdx.get(li)) {
+                                    newHTMLLines.push(`<span class="code-line-deleted">${escHtml(dLine)}</span>`);
+                                }
+                                deletedByIdx.delete(li);
+                                newHTMLLines.push(hl);
+                            } else if (cd.changed.has(li)) {
+                                newHTMLLines.push(`<span class="code-line-changed">${hl}</span>`);
+                            } else {
+                                newHTMLLines.push(hl);
+                            }
+                        }
+                        for (const [, lines] of deletedByIdx) {
+                            for (const dLine of lines) {
+                                newHTMLLines.push(`<span class="code-line-deleted">${escHtml(dLine)}</span>`);
+                            }
+                        }
+
+                        codeEl.innerHTML = newHTMLLines.join('\n');
+                        setFirst(el);
+                    } else if (detail.type === 'blockquote') {
+                        const bqDiff = detail.bqDiff;
+                        // blockquote child elements correspond to sub-tokens (p, ul, pre, etc.)
+                        const bqChildren = Array.from(el.children);
+
+                        // Insert deleted sub-blocks first
+                        for (const { beforeNewIdx, token: delToken } of bqDiff.deletions) {
+                            const wrapper = document.createElement('div');
+                            wrapper.classList.add('deleted-block');
+                            wrapper.innerHTML = marked.parse(delToken.raw);
+                            // Extract inner content (marked.parse wraps in tags)
+                            const refChild = bqChildren[beforeNewIdx] || null;
+                            if (refChild) {
+                                el.insertBefore(wrapper, refChild);
+                            } else {
+                                el.appendChild(wrapper);
+                            }
+                            setFirst(wrapper);
+                        }
+
+                        // Apply changes to sub-elements
+                        for (const [subIdx, subDetail] of bqDiff.changes) {
+                            const subEl = bqChildren[subIdx];
+                            if (!subEl) continue;
+
+                            if (subDetail.type === 'added') {
+                                subEl.classList.add('changed-block');
+                                setFirst(subEl);
+                            } else if (subDetail.type === 'modified') {
+                                subEl.classList.add('changed-block');
+                                const oldWrapper = document.createElement('div');
+                                oldWrapper.classList.add('deleted-block');
+                                oldWrapper.innerHTML = marked.parse(subDetail.oldToken.raw);
+                                el.insertBefore(oldWrapper, subEl);
+                                setFirst(oldWrapper);
+                            } else if (subDetail.type === 'list') {
+                                applyListDiff(subEl, subDetail.listDiff, setFirst);
+                            } else if (subDetail.type === 'table') {
+                                // Table inside blockquote — reuse top-level table rendering
+                                const td = subDetail.tableDiff;
+                                const tbody = subEl.querySelector('tbody');
+                                if (!tbody) continue;
+                                const rows = tbody.querySelectorAll(':scope > tr');
+                                if (td.headerChanged) {
+                                    const thead = subEl.querySelector('thead');
+                                    if (thead) { thead.classList.add('changed-block'); setFirst(thead); }
+                                }
+                                const sortedRows = [...td.changed.entries()].sort((a, b) => a[0] - b[0]);
+                                for (const [rowIdx, oldCells] of sortedRows) {
+                                    const tr = rows[rowIdx];
+                                    if (!tr) continue;
+                                    tr.classList.add('changed-block');
+                                    if (oldCells) {
+                                        const delTr = document.createElement('tr');
+                                        delTr.classList.add('deleted-block');
+                                        delTr.innerHTML = oldCells.map(c => `<td>${marked.parseInline(c.text)}</td>`).join('');
+                                        tbody.insertBefore(delTr, tr);
+                                        setFirst(delTr);
+                                    } else { setFirst(tr); }
+                                }
+                                for (const { beforeIdx, cells } of td.deleted) {
+                                    const delTr = document.createElement('tr');
+                                    delTr.classList.add('deleted-block');
+                                    delTr.innerHTML = cells.map(c => `<td>${marked.parseInline(c.text)}</td>`).join('');
+                                    const refTr = rows[beforeIdx];
+                                    if (refTr) { tbody.insertBefore(delTr, refTr); } else { tbody.appendChild(delTr); }
+                                    setFirst(delTr);
+                                }
+                            } else if (subDetail.type === 'code') {
+                                // Code inside blockquote — apply line-level diff
+                                const cd = subDetail.codeDiff;
+                                const codeEl = subEl.querySelector('code');
+                                if (!codeEl) continue;
+                                const lang = codeEl.className.match(/language-(\S+)/)?.[1] || '';
+                                const textLines = codeEl.textContent.split('\n');
+                                const highlightLine = line => {
+                                    try { return lang ? hljs.highlight(line, { language: lang }).value : hljs.highlightAuto(line).value; }
+                                    catch { return line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+                                };
+                                const escHtml = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+                                const deletedByIdx = new Map();
+                                for (const { beforeIdx, line } of cd.deleted) {
+                                    if (!deletedByIdx.has(beforeIdx)) deletedByIdx.set(beforeIdx, []);
+                                    deletedByIdx.get(beforeIdx).push(line);
+                                }
+                                const newHTMLLines = [];
+                                for (let li = 0; li < textLines.length; li++) {
+                                    const hl = highlightLine(textLines[li]);
+                                    if (cd.changed.has(li) && deletedByIdx.has(li)) {
+                                        for (const d of deletedByIdx.get(li)) newHTMLLines.push(`<span class="code-line-deleted">${escHtml(d)}</span>`);
+                                        deletedByIdx.delete(li);
+                                        newHTMLLines.push(`<span class="code-line-changed">${hl}</span>`);
+                                    } else if (deletedByIdx.has(li)) {
+                                        for (const d of deletedByIdx.get(li)) newHTMLLines.push(`<span class="code-line-deleted">${escHtml(d)}</span>`);
+                                        deletedByIdx.delete(li);
+                                        newHTMLLines.push(hl);
+                                    } else if (cd.changed.has(li)) {
+                                        newHTMLLines.push(`<span class="code-line-changed">${hl}</span>`);
+                                    } else { newHTMLLines.push(hl); }
+                                }
+                                for (const [, lines] of deletedByIdx) { for (const d of lines) newHTMLLines.push(`<span class="code-line-deleted">${escHtml(d)}</span>`); }
+                                codeEl.innerHTML = newHTMLLines.join('\n');
+                                setFirst(subEl);
+                            } else if (subDetail.type === 'blockquote') {
+                                // Nested blockquote — mark as changed (full recursive rendering is complex)
+                                subEl.classList.add('changed-block');
+                                setFirst(subEl);
+                            }
+                        }
+                        if (!firstChanged) setFirst(el);
+                    }
+                }
+
+                if (firstChanged) {
+                    requestAnimationFrame(() => {
+                        firstChanged.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    });
+                }
+            } else {
+                // No changes detected (or first render) — restore scroll position
+                requestAnimationFrame(() => {
+                    window.scrollTo(0, document.documentElement.scrollHeight * scrollRatio);
+                });
+            }
         }
 
         function showEmpty() {
             document.getElementById('content').style.display = 'none';
             document.getElementById('empty-state').style.display = 'flex';
+            previousTokens = null;
         }
 
     </script>
