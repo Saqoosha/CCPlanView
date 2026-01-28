@@ -52,34 +52,30 @@ struct MarkdownWebView: NSViewRepresentable {
 
         if contentChanged {
             context.coordinator.lastMarkdown = markdown
-            if markdown.isEmpty {
-                webView.evaluateJavaScript("showEmpty();")
-            } else {
-                let escaped = escapeForJS(markdown)
-                webView.evaluateJavaScript("renderMarkdown(`\(escaped)`);") { _, _ in
-                    // Debug: dump rendered HTML structure after diff is applied
-                    webView.evaluateJavaScript("""
-                        (function() {
-                            const el = document.getElementById('content');
-                            if (!el) return '';
-                            const lines = [];
-                            function walk(node, indent) {
-                                for (const child of node.children) {
-                                    const tag = child.tagName.toLowerCase();
-                                    const cls = child.className ? '.' + child.className.split(' ').join('.') : '';
-                                    const text = child.textContent.substring(0, 60).replace(/\\n/g, ' ');
-                                    lines.push(indent + '<' + tag + cls + '> ' + text);
-                                    if (['ul','ol','table','thead','tbody','tr'].includes(tag)) walk(child, indent + '  ');
-                                }
+            let escaped = escapeForJS(markdown)
+            webView.evaluateJavaScript("renderMarkdown(`\(escaped)`);") { _, _ in
+                // Debug: dump rendered HTML structure after diff is applied
+                webView.evaluateJavaScript("""
+                    (function() {
+                        const el = document.getElementById('content');
+                        if (!el) return '';
+                        const lines = [];
+                        function walk(node, indent) {
+                            for (const child of node.children) {
+                                const tag = child.tagName.toLowerCase();
+                                const cls = child.className ? '.' + child.className.split(' ').join('.') : '';
+                                const text = child.textContent.substring(0, 60).replace(/\\n/g, ' ');
+                                lines.push(indent + '<' + tag + cls + '> ' + text);
+                                if (['ul','ol','table','thead','tbody','tr'].includes(tag)) walk(child, indent + '  ');
                             }
-                            walk(el, '');
-                            return lines.join('\\n');
-                        })()
-                    """) { result, _ in
-                        if let html = result as? String, !html.isEmpty {
-                            let path = "/tmp/ccplanview-debug.txt"
-                            try? html.write(toFile: path, atomically: true, encoding: .utf8)
                         }
+                        walk(el, '');
+                        return lines.join('\\n');
+                    })()
+                """) { result, _ in
+                    if let html = result as? String, !html.isEmpty {
+                        let path = "/tmp/ccplanview-debug.txt"
+                        try? html.write(toFile: path, atomically: true, encoding: .utf8)
                     }
                 }
             }
