@@ -77,7 +77,7 @@ struct MarkdownWebView: NSViewRepresentable {
                         })()
                     """) { result, _ in
                         if let html = result as? String, !html.isEmpty {
-                            let path = "/tmp/markdown-viewer-debug.txt"
+                            let path = "/tmp/ccplanview-debug.txt"
                             try? html.write(toFile: path, atomically: true, encoding: .utf8)
                         }
                     }

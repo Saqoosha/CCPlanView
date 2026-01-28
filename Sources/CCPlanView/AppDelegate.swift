@@ -20,7 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         window.center()
         window.contentViewController = hostingController
-        window.title = "Markdown Viewer"
+        window.title = "CCPlanView"
         window.setFrameAutosaveName("MainWindow")
         window.makeKeyAndOrderFront(nil)
         self.window = window
@@ -69,9 +69,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // App menu
         let appMenuItem = NSMenuItem()
         let appMenu = NSMenu()
-        appMenu.addItem(withTitle: "About Markdown Viewer", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About CCPlanView", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit Markdown Viewer", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit CCPlanView", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appMenuItem.submenu = appMenu
         mainMenu.addItem(appMenuItem)
 

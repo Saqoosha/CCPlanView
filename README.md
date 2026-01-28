@@ -1,4 +1,4 @@
-# Markdown Viewer
+# CCPlanView
 
 Lightweight macOS markdown viewer with live reload.
 
@@ -26,7 +26,7 @@ Lightweight macOS markdown viewer with live reload.
 
 ```bash
 # Open a file from terminal
-open -a "Markdown Viewer" /path/to/file.md
+open -a "CCPlanView" /path/to/file.md
 
 # Or drag & drop a .md file onto the window
 ```

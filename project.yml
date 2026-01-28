@@ -1,4 +1,4 @@
-name: MarkdownViewer
+name: CCPlanView
 options:
   bundleIdPrefix: sh.saqoo
   deploymentTarget:
@@ -14,34 +14,34 @@ settings:
     MACOSX_DEPLOYMENT_TARGET: "14.0"
 
 targets:
-  MarkdownViewer:
+  CCPlanView:
     type: application
     platform: macOS
     sources:
-      - path: Sources/MarkdownViewer
+      - path: Sources/CCPlanView
         excludes:
           - "**/.DS_Store"
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: sh.saqoo.markdown-viewer
-      PRODUCT_NAME: "Markdown Viewer"
-      INFOPLIST_FILE: Sources/MarkdownViewer/Info.plist
+      PRODUCT_BUNDLE_IDENTIFIER: sh.saqoo.ccplanview
+      PRODUCT_NAME: "CCPlanView"
+      INFOPLIST_FILE: Sources/CCPlanView/Info.plist
       GENERATE_INFOPLIST_FILE: false
       CODE_SIGN_STYLE: Automatic
       DEVELOPMENT_TEAM: G5G54TCH8W
       ENABLE_HARDENED_RUNTIME: YES
-      CODE_SIGN_ENTITLEMENTS: Sources/MarkdownViewer/MarkdownViewer.entitlements
+      CODE_SIGN_ENTITLEMENTS: Sources/CCPlanView/CCPlanView.entitlements
       ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
       ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
     info:
-      path: Sources/MarkdownViewer/Info.plist
+      path: Sources/CCPlanView/Info.plist
       properties:
-        CFBundleName: "Markdown Viewer"
-        CFBundleDisplayName: "Markdown Viewer"
-        CFBundleIdentifier: sh.saqoo.markdown-viewer
+        CFBundleName: "CCPlanView"
+        CFBundleDisplayName: "CCPlanView"
+        CFBundleIdentifier: sh.saqoo.ccplanview
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundlePackageType: APPL
-        CFBundleExecutable: "Markdown Viewer"
+        CFBundleExecutable: "CCPlanView"
         LSMinimumSystemVersion: "14.0"
         NSHighResolutionCapable: true
         LSApplicationCategoryType: public.app-category.developer-tools

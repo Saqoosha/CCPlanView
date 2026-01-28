@@ -1,6 +1,6 @@
-# Release Markdown Viewer
+# Release CCPlanView
 
-Release a new version of Markdown Viewer with automatic version bump and release notes.
+Release a new version of CCPlanView with automatic version bump and release notes.
 
 ## Task
 
@@ -45,7 +45,7 @@ This builds, notarizes, creates DMG, commits, tags, and creates GitHub Release.
 Analyze the actual code changes and write user-friendly release notes:
 
 ```markdown
-## Markdown Viewer X.Y.Z
+## CCPlanView X.Y.Z
 
 Brief description of this release.
 

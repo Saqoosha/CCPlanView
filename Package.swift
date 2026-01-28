@@ -3,14 +3,14 @@
 import PackageDescription
 
 let package = Package(
-    name: "MarkdownViewer",
+    name: "CCPlanView",
     platforms: [
         .macOS(.v14),
     ],
     targets: [
         .executableTarget(
-            name: "MarkdownViewer",
-            path: "Sources/MarkdownViewer",
+            name: "CCPlanView",
+            path: "Sources/CCPlanView",
             resources: [
                 .copy("Resources"),
             ]
