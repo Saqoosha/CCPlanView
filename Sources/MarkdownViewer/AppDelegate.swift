@@ -14,11 +14,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.center()
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = .white
         window.contentViewController = hostingController
         window.title = "Markdown Viewer"
         window.setFrameAutosaveName("MainWindow")
