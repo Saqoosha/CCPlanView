@@ -1,12 +1,14 @@
 import AppKit
+import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     fileprivate static let titlebarHeight: CGFloat = 52
     fileprivate static let windowButtonsWidth: CGFloat = 70
 
+    private var hasOpenedInitialFile = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // 新しいウィンドウが作られたら TitlebarDragView を追加
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowDidBecomeKey(_:)),
@@ -16,7 +18,59 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         true
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for (index, url) in urls.enumerated() {
+            if index == 0 && !hasOpenedInitialFile {
+                // First file goes to the existing empty window
+                hasOpenedInitialFile = true
+                WindowManager.shared.openFile(url)
+                NotificationCenter.default.post(
+                    name: .openFileInWindow,
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            } else {
+                // Subsequent files open new windows
+                WindowManager.shared.openFile(url)
+                // SwiftUI WindowGroup will create new window when we post this
+                // But we need a way to open a new window...
+                // For now, open in current window (will be fixed with proper multi-window support)
+                NotificationCenter.default.post(
+                    name: .openFileInWindow,
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            }
+        }
+    }
+
+    @objc func openDocument(_ sender: Any?) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.plainText]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+
+        if panel.runModal() == .OK, let url = panel.url {
+            // If no windows exist, create one first
+            if NSApp.windows.filter({ $0.isVisible }).isEmpty {
+                WindowManager.shared.openFile(url)
+                // Trigger new window creation
+                NotificationCenter.default.post(name: .createNewWindow, object: nil)
+            } else {
+                NotificationCenter.default.post(
+                    name: .openFileInWindow,
+                    object: nil,
+                    userInfo: ["url": url]
+                )
+            }
+        }
     }
 
     @objc private func windowDidBecomeKey(_ notification: Notification) {
@@ -25,11 +79,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setupTitlebarDragView(for window: NSWindow) {
-        // 既に追加済みかチェック
         guard let themeFrame = window.contentView?.superview,
               !themeFrame.subviews.contains(where: { $0 is TitlebarDragView })
         else { return }
 
+        // Restore window frame from UserDefaults
+        if window.frameAutosaveName.isEmpty {
+            window.setFrameAutosaveName("CCPlanViewWindow")
+            // setFrameAutosaveName should restore, but SwiftUI may override it
+            // So we manually restore after a short delay
+            DispatchQueue.main.async {
+                if let frameString = UserDefaults.standard.string(forKey: "NSWindow Frame CCPlanViewWindow") {
+                    window.setFrame(from: frameString)
+                }
+            }
+        }
         window.titlebarAppearsTransparent = true
 
         let dragView = TitlebarDragView()
@@ -45,17 +109,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 }
 
 // Transparent view that enables window dragging over the titlebar area.
-// WKWebView consumes all mouse events, so this sits on top to intercept drags.
 final class TitlebarDragView: NSView {
     override func mouseDown(with event: NSEvent) {
         window?.performDrag(with: event)
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // Only intercept in the titlebar region, excluding window control buttons
         let local = convert(point, from: superview)
         guard bounds.contains(local) else { return nil }
-        // Skip left area where close/minimize/zoom buttons are
         if local.x < AppDelegate.windowButtonsWidth { return nil }
         return self
     }
