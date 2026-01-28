@@ -154,8 +154,11 @@ final class TitlebarDragView: NSView {
     }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
-        // Only intercept in the titlebar region (no buttons)
+        // Only intercept in the titlebar region, excluding window control buttons
         let local = convert(point, from: superview)
-        return bounds.contains(local) ? self : nil
+        guard bounds.contains(local) else { return nil }
+        // Skip left area where close/minimize/zoom buttons are (~70px)
+        if local.x < 70 { return nil }
+        return self
     }
 }
