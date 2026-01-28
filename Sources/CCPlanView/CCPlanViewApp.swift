@@ -1,15 +1,58 @@
 import SwiftUI
 
+@MainActor
+@Observable
+final class RecentFilesManager {
+    static let shared = RecentFilesManager()
+
+    var recentFiles: [URL] = NSDocumentController.shared.recentDocumentURLs
+
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: .recentFilesDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.recentFiles = NSDocumentController.shared.recentDocumentURLs
+            }
+        }
+    }
+
+    func openFile(_ url: URL, openWindow: OpenWindowAction) {
+        WindowManager.shared.openFile(url)
+        openWindow(id: "main")
+    }
+
+    func clearRecents() {
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        recentFiles = []
+    }
+}
+
 @main
 struct CCPlanViewApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @Environment(\.openWindow) private var openWindow
+    @State private var recentFilesManager = RecentFilesManager.shared
 
     var body: some Scene {
         WindowGroup(id: "main") {
             MainContentView()
         }
-        .defaultSize(width: 800, height: 900)
+        .defaultWindowPlacement { _, _ in
+            let defaultSize = CGSize(width: 800, height: 900)
+            if let frameString = UserDefaults.standard.string(forKey: AppDelegate.windowFrameKey) {
+                // Parse saved frame: "x y width height screenX screenY screenWidth screenHeight"
+                let components = frameString.split(separator: " ").compactMap { Double($0) }
+                if components.count >= 4 {
+                    let size = CGSize(width: components[2], height: components[3])
+                    let position = CGPoint(x: components[0], y: components[1])
+                    return WindowPlacement(position, size: size)
+                }
+            }
+            return WindowPlacement(size: defaultSize)
+        }
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
@@ -18,6 +61,23 @@ struct CCPlanViewApp: App {
                     openFileWithPanel()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+
+                Menu("Open Recent") {
+                    ForEach(recentFilesManager.recentFiles, id: \.self) { url in
+                        Button(url.lastPathComponent) {
+                            recentFilesManager.openFile(url, openWindow: openWindow)
+                        }
+                    }
+
+                    if !recentFilesManager.recentFiles.isEmpty {
+                        Divider()
+                    }
+
+                    Button("Clear Menu") {
+                        recentFilesManager.clearRecents()
+                    }
+                    .disabled(recentFilesManager.recentFiles.isEmpty)
+                }
             }
         }
     }
@@ -100,6 +160,8 @@ struct MainContentView: View {
     private func openFile(_ url: URL) {
         fileURL = url
         document.open(url: url)
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        NotificationCenter.default.post(name: .recentFilesDidChange, object: nil)
     }
 
     private func showOpenPanel() {
@@ -201,4 +263,5 @@ struct EmptyStateView: View {
 
 extension Notification.Name {
     static let openFileInWindow = Notification.Name("openFileInWindow")
+    static let recentFilesDidChange = Notification.Name("recentFilesDidChange")
 }

@@ -5,6 +5,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     fileprivate static let titlebarHeight: CGFloat = 52
     fileprivate static let windowButtonsWidth: CGFloat = 70
+    static let windowFrameKey = "CCPlanViewWindowFrame"
 
     private var hasOpenedInitialFile = false
 
@@ -15,6 +16,38 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWindow.didBecomeKeyNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidResize(_:)),
+            name: NSWindow.didResizeNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowDidMove(_:)),
+            name: NSWindow.didMoveNotification,
+            object: nil
+        )
+    }
+
+    @objc private func windowDidResize(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        saveWindowFrame(window)
+    }
+
+    @objc private func windowDidMove(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow else { return }
+        saveWindowFrame(window)
+    }
+
+    private func saveWindowFrame(_ window: NSWindow) {
+        // Only save frames for our main windows (ones with TitlebarDragView)
+        guard let themeFrame = window.contentView?.superview,
+              themeFrame.subviews.contains(where: { $0 is TitlebarDragView })
+        else { return }
+
+        let frameString = window.frameDescriptor
+        UserDefaults.standard.set(frameString, forKey: AppDelegate.windowFrameKey)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -61,17 +94,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               !themeFrame.subviews.contains(where: { $0 is TitlebarDragView })
         else { return }
 
-        // Restore window frame from UserDefaults
-        if window.frameAutosaveName.isEmpty {
-            window.setFrameAutosaveName("CCPlanViewWindow")
-            // setFrameAutosaveName should restore, but SwiftUI may override it
-            // So we manually restore after a short delay
-            DispatchQueue.main.async {
-                if let frameString = UserDefaults.standard.string(forKey: "NSWindow Frame CCPlanViewWindow") {
-                    window.setFrame(from: frameString)
-                }
-            }
-        }
         window.titlebarAppearsTransparent = true
 
         let dragView = TitlebarDragView()

@@ -2,7 +2,7 @@ name: CCPlanView
 options:
   bundleIdPrefix: sh.saqoo
   deploymentTarget:
-    macOS: "14.0"
+    macOS: "15.0"
   xcodeVersion: "16.0"
   generateEmptyDirectories: true
 
@@ -11,7 +11,7 @@ settings:
     MARKETING_VERSION: "1.3.0"
     CURRENT_PROJECT_VERSION: "8"
     SWIFT_VERSION: "6.0"
-    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    MACOSX_DEPLOYMENT_TARGET: "15.0"
 
 targets:
   CCPlanView:
@@ -43,7 +43,7 @@ targets:
         CFBundlePackageType: APPL
         CFBundleIconName: AppIcon
         CFBundleExecutable: "CCPlanView"
-        LSMinimumSystemVersion: "14.0"
+        LSMinimumSystemVersion: "15.0"
         NSHighResolutionCapable: true
         LSApplicationCategoryType: public.app-category.developer-tools
         NSHumanReadableCopyright: "© 2026 Saqoosha. MIT License."
