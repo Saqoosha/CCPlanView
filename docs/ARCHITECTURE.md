@@ -8,9 +8,10 @@
 │                                                         │
 │  Finder / open -a ──▶ AppDelegate.application(_:open:)  │
 │  Drag & Drop ────────▶ DropOverlayView.performDrag...   │
-│  File > Open ────────▶ CCPlanViewApp.openFile()     │
+│  File > Open ────────▶ AppDelegate.openFile()           │
 │                                                         │
 │  All paths call ──────▶ MarkdownDocument.open(url:)     │
+│                         (guards against duplicate URL)   │
 └─────────────────────────┬───────────────────────────────┘
                           │
                           ▼
@@ -47,17 +48,34 @@
 ## View Hierarchy (AppKit Layer)
 
 ```
-NSWindow
- └─ SwiftUI HostingView
-     └─ ContentView
-         └─ MarkdownWebView (NSViewRepresentable)
-             └─ DropContainerView (NSView)
-                 ├─ WKWebView          ← renders markdown
-                 └─ DropOverlayView    ← transparent, on top
-                     • registerForDraggedTypes([.fileURL])
-                     • hitTest() returns nil unless dragging
-                     • draggingEntered/performDragOperation
+NSWindow (titlebarAppearsTransparent, fullSizeContentView)
+ ├─ themeFrame
+ │   └─ TitlebarDragView      ← transparent, intercepts mouse drags
+ └─ NSHostingController
+     └─ ContentView (SwiftUI)
+         └─ ZStack
+             ├─ backgroundColor
+             ├─ MarkdownWebView (NSViewRepresentable)
+             │   └─ DropContainerView (NSView)
+             │       ├─ WKWebView          ← renders markdown
+             │       └─ DropOverlayView    ← transparent, on top
+             │           • registerForDraggedTypes([.fileURL])
+             │           • hitTest() returns nil unless dragging
+             │           • draggingEntered/performDragOperation
+             └─ LinearGradient             ← fades titlebar into content
+                 • allowsHitTesting(false)
 ```
+
+### Why TitlebarDragView?
+
+With `fullSizeContentView` and `titlebarAppearsTransparent`, WKWebView extends under
+the titlebar. WKWebView's internal views consume all mouse events, preventing window
+dragging. `TitlebarDragView` is a transparent NSView added to the themeFrame (the
+superview of the window's contentView) that:
+
+1. Sits **above** all other views in the window chrome
+2. Calls `window?.performDrag(with:)` on `mouseDown`
+3. Returns `self` from `hitTest` for points within bounds (captures all titlebar clicks)
 
 ### Why DropOverlayView?
 
@@ -69,6 +87,30 @@ subclassing WKWebView resolves this. The solution is a transparent overlay view 
 2. Returns `nil` from `hitTest(_:)` when not dragging (mouse events pass through to WebView)
 3. Accepts drag events via `registerForDraggedTypes`
 4. Sets `isDragging = true` on `draggingEntered` to temporarily become the hit-test target
+
+### Why LinearGradient over the titlebar?
+
+The titlebar is transparent and content scrolls underneath it. The gradient provides a
+smooth fade from the background color to transparent, so content doesn't abruptly
+appear behind the window controls. `allowsHitTesting(false)` ensures it doesn't
+interfere with the titlebar buttons or drag view.
+
+## AppDelegate Lifecycle
+
+```
+applicationDidFinishLaunching
+  ├─ Create NSWindow + NSHostingController(ContentView)
+  ├─ Add TitlebarDragView to themeFrame
+  ├─ Setup menu bar (App, File, Edit, View, Window)
+  └─ Process pendingURL (if file was opened before window was ready)
+
+application(_:open:)
+  ├─ Window ready ──▶ document.open(url:) immediately
+  └─ Window nil ───▶ store as pendingURL for later
+
+applicationShouldTerminateAfterLastWindowClosed ──▶ true
+applicationShouldHandleReopen ──▶ restore window + activate
+```
 
 ## FileWatcher
 
@@ -105,33 +147,44 @@ index.html (loaded once via loadFileURL)
 Swift calls evaluateJavaScript:
   1. setTheme(isDark)      ← switches <link> href for highlight CSS
   2. renderMarkdown(src)   ← marked.parse() + hljs.highlightAll()
-                             preserves scroll ratio across re-renders
+                             diff algorithm highlights changes
+                             (green for added, red for deleted)
 ```
 
 ### Why loadFileURL instead of loadHTMLString?
 
-`loadHTMLString` (used by ccdiary) inlines all JS/CSS and re-creates the entire HTML
+`loadHTMLString` inlines all JS/CSS and re-creates the entire HTML
 on every content change. `loadFileURL`:
 - Loads the page once; subsequent updates via `evaluateJavaScript`
 - Naturally preserves scroll position (no page reload)
 - No flicker on live reload
 - JS/CSS loaded as separate files (easier to debug)
 
+### Diff Visualization
+
+The `renderMarkdown` JS function uses a token-based diff algorithm (LCS) to detect
+changes between the previous and current render. Changed content is highlighted:
+- `.changed-block` — green highlight for added/modified content
+- `.deleted-block` — red strikethrough for removed content
+- `.code-line-changed` / `.code-line-deleted` — per-line diffs in code blocks
+
+Granular diff functions handle nested structures: `diffListItems()`, `diffTableRows()`,
+`diffCodeLines()`.
+
 ## Module Dependency Graph
 
 ```
 CCPlanViewApp (@main)
-  ├─ AppDelegate
-  │   └─ MarkdownDocument
-  └─ ContentView
+  └─ AppDelegate
       ├─ MarkdownDocument
-      └─ MarkdownWebView
-          ├─ DropContainerView
-          │   └─ DropOverlayView
-          └─ WKWebView + Coordinator
-              └─ index.html (Resources)
-
-FileWatcher ← owned by MarkdownDocument
+      │   └─ FileWatcher
+      └─ NSWindow
+          └─ ContentView
+              └─ MarkdownWebView
+                  ├─ DropContainerView
+                  │   └─ DropOverlayView
+                  └─ WKWebView + Coordinator
+                      └─ index.html (Resources)
 ```
 
 No external Swift dependencies. All JS/CSS libraries are vendored in `Resources/`.
