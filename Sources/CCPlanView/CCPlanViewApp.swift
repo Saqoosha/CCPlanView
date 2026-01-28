@@ -1,11 +1,22 @@
-import AppKit
+import SwiftUI
 
 @main
-enum CCPlanViewApp {
-    static func main() {
-        let app = NSApplication.shared
-        let delegate = AppDelegate()
-        app.delegate = delegate
-        app.run()
+struct CCPlanViewApp: App {
+    @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
+
+    var body: some Scene {
+        DocumentGroup(viewing: MarkdownFileDocument.self) { configuration in
+            ContentView(document: configuration.document)
+                .task {
+                    if let url = configuration.fileURL {
+                        configuration.document.startWatching(url: url)
+                    }
+                }
+        }
+        .windowStyle(.automatic)
+        .windowToolbarStyle(.unified(showsTitle: true))
+        .commands {
+            CommandGroup(replacing: .newItem) {}
+        }
     }
 }
