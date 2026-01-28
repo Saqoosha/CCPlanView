@@ -20,10 +20,9 @@ struct MarkdownWebView: NSViewRepresentable {
         container.onFileDrop = onFileDrop
 
         // Load index.html from bundle
-        if let resourceURL = Bundle.main.resourceURL,
-           let htmlURL = Bundle.main.url(forResource: "index", withExtension: "html")
-        {
-            webView.loadFileURL(htmlURL, allowingReadAccessTo: resourceURL)
+        // Allow read access to root so images relative to markdown file can load
+        if let htmlURL = Bundle.main.url(forResource: "index", withExtension: "html") {
+            webView.loadFileURL(htmlURL, allowingReadAccessTo: URL(fileURLWithPath: "/"))
         }
 
         context.coordinator.webView = webView
@@ -38,6 +37,7 @@ struct MarkdownWebView: NSViewRepresentable {
         if !context.coordinator.isPageLoaded {
             context.coordinator.pendingMarkdown = markdown
             context.coordinator.pendingIsDarkMode = isDarkMode
+            context.coordinator.pendingFileURL = fileURL
             return
         }
 
@@ -48,6 +48,14 @@ struct MarkdownWebView: NSViewRepresentable {
         if fileChanged {
             context.coordinator.lastFileURL = fileURL
             webView.evaluateJavaScript("resetDiff();")
+            // Set base URL for resolving relative image paths
+            if let fileURL = fileURL {
+                let baseURL = fileURL.deletingLastPathComponent().path
+                let escapedBase = Self.escapeForJS(baseURL)
+                webView.evaluateJavaScript("setBaseURL(`\(escapedBase)`);")
+            } else {
+                webView.evaluateJavaScript("setBaseURL(null);")
+            }
         }
 
         if themeChanged {
@@ -85,6 +93,7 @@ struct MarkdownWebView: NSViewRepresentable {
         var isPageLoaded = false
         var pendingMarkdown: String?
         var pendingIsDarkMode: Bool?
+        var pendingFileURL: URL?
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isPageLoaded = true
@@ -93,6 +102,13 @@ struct MarkdownWebView: NSViewRepresentable {
                 lastIsDarkMode = isDark
                 webView.evaluateJavaScript("setTheme(\(isDark));")
             }
+            // Set base URL before rendering markdown so images resolve correctly
+            if let fileURL = pendingFileURL {
+                lastFileURL = fileURL
+                let baseURL = fileURL.deletingLastPathComponent().path
+                let escapedBase = MarkdownWebView.escapeForJS(baseURL)
+                webView.evaluateJavaScript("setBaseURL(`\(escapedBase)`);")
+            }
             if let markdown = pendingMarkdown, !markdown.isEmpty {
                 lastMarkdown = markdown
                 let escaped = MarkdownWebView.escapeForJS(markdown)
@@ -100,6 +116,7 @@ struct MarkdownWebView: NSViewRepresentable {
             }
             pendingMarkdown = nil
             pendingIsDarkMode = nil
+            pendingFileURL = nil
         }
     }
 }

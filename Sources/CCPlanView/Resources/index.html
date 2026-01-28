@@ -85,9 +85,28 @@
 <body>
     <article class="markdown-body" id="content"></article>
     <script>
-        marked.setOptions({
+        let baseURL = null;
+
+        function setBaseURL(url) {
+            baseURL = url;
+        }
+
+        // Custom renderer to resolve relative image paths
+        const renderer = {
+            image({ href, title, text }) {
+                // Resolve relative paths using baseURL
+                if (baseURL && href && !href.startsWith('http://') && !href.startsWith('https://') && !href.startsWith('file://') && !href.startsWith('/') && !href.startsWith('data:')) {
+                    href = 'file://' + baseURL + '/' + href;
+                }
+                const titleAttr = title ? ` title="${title}"` : '';
+                return `<img src="${href}" alt="${text || ''}"${titleAttr}>`;
+            }
+        };
+
+        marked.use({
             breaks: true,
-            gfm: true
+            gfm: true,
+            renderer: renderer
         });
 
         let previousTokens = null;
@@ -491,11 +510,27 @@
             document.documentElement.setAttribute('data-light-theme', 'light');
         }
 
+        // Resolve relative image paths in markdown/HTML source
+        function resolveImagePaths(source) {
+            if (!baseURL) return source;
+            const fileBase = 'file://' + baseURL + '/';
+            // Replace src="relative" and src='relative' in HTML img tags
+            // Also handles markdown images ![](relative)
+            return source
+                .replace(/(<img[^>]*\ssrc=["'])(?!https?:\/\/|file:\/\/|\/|data:)([^"']+)(["'])/gi,
+                    (match, prefix, path, suffix) => prefix + fileBase + path + suffix)
+                .replace(/(\!\[[^\]]*\]\()(?!https?:\/\/|file:\/\/|\/|data:)([^)]+)(\))/g,
+                    (match, prefix, path, suffix) => prefix + fileBase + path + suffix);
+        }
+
         function renderMarkdown(source) {
             const contentEl = document.getElementById('content');
             const scrollRatio = document.documentElement.scrollHeight > 0
                 ? window.scrollY / document.documentElement.scrollHeight
                 : 0;
+
+            // Resolve relative image paths before parsing
+            source = resolveImagePaths(source);
 
             const newTokens = marked.Lexer.lex(source);
             let diffResult = null;
