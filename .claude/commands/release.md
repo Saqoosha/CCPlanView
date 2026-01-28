@@ -69,7 +69,7 @@ gh release edit v<new_version> --notes "<generated notes>"
 
 Display:
 - New version number
-- Release URL: `https://github.com/Saqoosha/markdown-viewer/releases/tag/v<new_version>`
+- Release URL: `https://github.com/Saqoosha/CCPlanView/releases/tag/v<new_version>`
 
 ## Notes
 
