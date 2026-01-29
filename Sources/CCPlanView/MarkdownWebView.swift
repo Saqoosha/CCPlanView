@@ -146,6 +146,54 @@ struct MarkdownWebView: NSViewRepresentable {
             pendingIsDarkMode = nil
             pendingFileURL = nil
         }
+
+        func webView(
+            _ webView: WKWebView,
+            decidePolicyFor navigationAction: WKNavigationAction
+        ) async -> WKNavigationActionPolicy {
+            // Allow initial load (index.html) and non-link navigations
+            guard navigationAction.navigationType == .linkActivated,
+                  let url = navigationAction.request.url
+            else {
+                return .allow
+            }
+
+            // Allow anchor links (same page navigation within index.html)
+            if url.fragment != nil,
+               let currentURL = webView.url,
+               url.path == currentURL.path {
+                return .allow
+            }
+
+            // Route based on URL scheme
+            switch url.scheme {
+            case "file":
+                handleLocalFileLink(url: url)
+            case "http", "https", "mailto":
+                NSWorkspace.shared.open(url)
+            default:
+                // Let system handle other schemes
+                if !url.absoluteString.isEmpty {
+                    NSWorkspace.shared.open(url)
+                }
+            }
+            return .cancel
+        }
+
+        private func handleLocalFileLink(url: URL) {
+            let ext = url.pathExtension.lowercased()
+
+            if Constants.markdownExtensions.contains(ext) {
+                // Markdown file → open in CCPlanView
+                NSDocumentController.shared.openDocument(
+                    withContentsOf: url,
+                    display: true
+                ) { _, _, _ in }
+            } else {
+                // Non-markdown → open with default app
+                NSWorkspace.shared.open(url)
+            }
+        }
     }
 }
 
