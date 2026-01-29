@@ -42,3 +42,5 @@ App output: `build/DerivedData/Build/Products/{Config}/CCPlanView.app`
 - `scripts/notarize.sh` - codesign + notarytool
 - `scripts/package_dmg.sh` - DMG creation + notarization
 - `scripts/release.sh` - version bump + jj + gh release
+
+<!-- Live reload test: edit timestamp 02:21 - UPDATED! -->

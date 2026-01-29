@@ -1,96 +1,29 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-final class MarkdownFileDocument: ReferenceFileDocument, ObservableObject, @unchecked Sendable {
-    nonisolated(unsafe) static var readableContentTypes: [UTType] = [
-        UTType(filenameExtension: "md")!,
-        UTType(filenameExtension: "markdown")!,
-        UTType(filenameExtension: "mdown")!,
-        UTType(filenameExtension: "mkd")!,
-        .plainText,
-    ]
+extension UTType {
+    static let markdown = UTType(filenameExtension: "md")!
+}
 
-    @MainActor @Published var markdownContent: String = ""
-    @MainActor @Published var fileURL: URL?
+final class MarkdownFileDocument: ReferenceFileDocument, ObservableObject {
+    static var readableContentTypes: [UTType] { [.markdown, .plainText] }
 
-    @MainActor private var fileWatcher: FileWatcher?
+    @Published var markdown: String
 
-    /// Content loaded from file, accessed from any isolation context.
-    /// Used for snapshot/fileWrapper which are nonisolated protocol requirements.
-    private let contentLock = NSLock()
-    nonisolated(unsafe) private var _storedContent: String = ""
-    private var storedContent: String {
-        get {
-            contentLock.lock()
-            defer { contentLock.unlock() }
-            return _storedContent
-        }
-        set {
-            contentLock.lock()
-            defer { contentLock.unlock() }
-            _storedContent = newValue
-        }
+    init(markdown: String = "") {
+        self.markdown = markdown
     }
-
-    init() {}
 
     required init(configuration: ReadConfiguration) throws {
-        guard let data = configuration.file.regularFileContents,
-              let content = String(data: data, encoding: .utf8)
-        else {
-            throw CocoaError(.fileReadCorruptFile)
-        }
-        self._storedContent = content
-        // MainActor property will be synced in startWatching
+        let data = configuration.file.regularFileContents!
+        markdown = String(decoding: data, as: UTF8.self)
     }
 
-    nonisolated func snapshot(contentType: UTType) throws -> String {
-        storedContent
+    func snapshot(contentType: UTType) throws -> String {
+        markdown
     }
 
-    nonisolated func fileWrapper(snapshot: String, configuration: WriteConfiguration) throws -> FileWrapper {
-        FileWrapper(regularFileWithContents: snapshot.data(using: .utf8) ?? Data())
-    }
-
-    @MainActor
-    func startWatching(url: URL) {
-        fileURL = url
-        // Sync stored content to published property
-        markdownContent = storedContent
-        fileWatcher?.stop()
-        fileWatcher = FileWatcher(url: url) { [weak self] in
-            Task { @MainActor in
-                self?.reloadContent()
-            }
-        }
-        fileWatcher?.start()
-    }
-
-    @MainActor
-    func open(url: URL) {
-        // D&D で別ファイルを開く用
-        fileURL = url
-        reloadContent()
-        fileWatcher?.stop()
-        fileWatcher = FileWatcher(url: url) { [weak self] in
-            Task { @MainActor in
-                self?.reloadContent()
-            }
-        }
-        fileWatcher?.start()
-    }
-
-    @MainActor
-    private func reloadContent() {
-        guard let url = fileURL else { return }
-        do {
-            let content = try String(contentsOf: url, encoding: .utf8)
-            storedContent = content
-            markdownContent = content
-        } catch {
-            let errorMessage = "**Error:** \(error.localizedDescription)"
-            storedContent = errorMessage
-            markdownContent = errorMessage
-        }
+    func fileWrapper(snapshot: String, configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(snapshot.utf8))
     }
 }
