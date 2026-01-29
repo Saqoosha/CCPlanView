@@ -8,6 +8,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     fileprivate static let toolbarButtonsWidth: CGFloat = 50
     static let windowFrameKey = "CCPlanViewWindowFrame"
 
+    private static let dontAskHookSetupKey = "dontAskHookSetup"
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NotificationCenter.default.addObserver(
             self,
@@ -27,6 +29,57 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWindow.didMoveNotification,
             object: nil
         )
+
+        // Check hook setup on launch
+        checkHookSetup()
+    }
+
+    private func checkHookSetup() {
+        guard !UserDefaults.standard.bool(forKey: Self.dontAskHookSetupKey) else { return }
+        guard HookManager.isClaudeCodeInstalled() else { return }
+        guard !HookManager.isHookConfigured() else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Setup Claude Code Hooks?"
+        alert.informativeText =
+            "CCPlanView can automatically open plan files when Claude exits plan mode. Would you like to install the hook?"
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Later")
+        alert.addButton(withTitle: "Don't Ask Again")
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:  // Install
+            do {
+                try HookManager.installHook()
+                NotificationCenter.default.post(name: .hookConfigurationChanged, object: nil)
+                showSuccessAlert()
+            } catch {
+                showErrorAlert(error)
+            }
+        case .alertThirdButtonReturn:  // Don't Ask Again
+            UserDefaults.standard.set(true, forKey: Self.dontAskHookSetupKey)
+        default:
+            break
+        }
+    }
+
+    private func showSuccessAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Hooks Installed"
+        alert.informativeText =
+            "Claude Code hooks have been configured. CCPlanView will open plan files when Claude exits plan mode."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func showErrorAlert(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Failed to Configure Hooks"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 
     @objc private func windowDidResize(_ notification: Notification) {
