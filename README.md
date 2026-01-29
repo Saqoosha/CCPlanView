@@ -10,8 +10,9 @@
 
 - Render `.md` files with GitHub-flavored markdown styling
 - Code syntax highlighting (highlight.js)
-- Live reload on file changes (works with vim, VS Code, etc.)
+- Diff visualization (green for added, red for deleted)
 - Dark/light mode auto-switch
+- URL scheme for on-demand refresh (`ccplanview://refresh?file=...`)
 - Open files via File > Open, drag & drop, or Finder "Open With"
 
 ## Installation
@@ -31,7 +32,7 @@ open -a "CCPlanView" /path/to/file.md
 
 ### Use with Claude Code Hooks
 
-CCPlanView works great as a plan viewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). When Claude generates a plan file (via `ExitPlanMode`), a hook can automatically open it in CCPlanView with live reload — so you can review the plan in real-time as Claude writes it.
+CCPlanView works great as a plan viewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). When Claude generates a plan file (via `ExitPlanMode`), a hook can automatically open it in CCPlanView and trigger a refresh to show the latest content with diff highlighting.
 
 Add the following to your `~/.config/claude/settings.json`:
 
@@ -44,8 +45,8 @@ Add the following to your `~/.config/claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "open -a 'CCPlanView' \"$(ls -t ~/.claude/plans/*.md | head -1)\"",
-            "timeout": 5
+            "command": "FILE=$(ls -t ~/.claude/plans/*.md | head -1) && open -a 'CCPlanView' \"$FILE\" && sleep 0.5 && open \"ccplanview://refresh?file=$FILE\"",
+            "timeout": 10
           }
         ]
       }
@@ -54,7 +55,7 @@ Add the following to your `~/.config/claude/settings.json`:
 }
 ```
 
-This hook triggers right before Claude presents a plan for approval, opening the latest plan file in CCPlanView. Thanks to live reload, the content updates automatically as the plan is finalized.
+This hook triggers right before Claude presents a plan for approval. It opens the latest plan file in CCPlanView and sends a refresh command via URL scheme, highlighting any changes since the last view.
 
 ## Development
 

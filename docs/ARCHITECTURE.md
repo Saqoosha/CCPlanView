@@ -20,12 +20,7 @@
 │  @Published markdownContent ──▶ triggers SwiftUI update │
 │                                                         │
 │  init(configuration:) ──▶ loads content from FileWrapper│
-│  startWatching(url:) ──▶ syncs content + starts watcher │
-│  open(url:) ──▶ reloadContent() + restarts watcher      │
-│                      │              │                   │
-│                      ▼              ▼                   │
-│              String(contentsOf:)  FileWatcher           │
-│                                   │ onChange ──▶ reloadContent()
+│  @Published markdown ──▶ content as String              │
 └─────────────────────────┬───────────────────────────────┘
                           │ @Published markdownContent
                           ▼
@@ -113,28 +108,65 @@ applicationShouldTerminateAfterLastWindowClosed ──▶ true
 Note: File opening and menu setup are now handled by SwiftUI's DocumentGroup.
 Each file opens in a new window automatically.
 
-## FileWatcher
+## URL Scheme Refresh
 
 ```
-DispatchSource.makeFileSystemObjectSource
-  eventMask: [.write, .rename, .delete]
-
-  .write ──▶ debouncedOnChange() (100ms)
-
-  .delete / .rename ──▶ stopWatching()
-                        wait 100ms
-                        startWatching() on new fd
-                        debouncedOnChange()
+ccplanview://refresh              ──▶ Refresh all open documents
+ccplanview://refresh?file=/path  ──▶ Refresh specific file only
 ```
 
-Editors save files differently:
-- **VS Code**: writes directly to the file → `.write` event
-- **vim / TextMate**: deletes the file, creates a new one → `.delete` + `.rename`
+### Flow
 
-The watcher handles both patterns by detecting delete/rename events, waiting for the
-new file to appear, then re-opening a fresh file descriptor.
+```
+open "ccplanview://refresh?file=/path/to/file.md"
+  │
+  ▼
+AppDelegate.application(_:open:)
+  ├─ Parse URL scheme and query params
+  ├─ Create targetFileURL from file param
+  └─ NotificationCenter.post(.ccplanviewRefresh, object: targetFileURL)
+      │
+      ▼
+MainContentView.onReceive(.ccplanviewRefresh)
+  ├─ Compare paths using resolvingSymlinksInPath()
+  │   (handles ~/.claude → ~/.config/claude symlinks)
+  ├─ If targetURL matches or is nil, call refreshContent()
+  └─ refreshContent() reads file and updates renderedMarkdown
+```
 
-All operations happen on a dedicated serial `DispatchQueue` to avoid race conditions.
+### Usage with Claude Code Hooks
+
+```json
+{
+  "PreToolUse": [{
+    "matcher": "ExitPlanMode",
+    "hooks": [{
+      "command": "FILE=$(ls -t ~/.claude/plans/*.md | head -1) && open -a 'CCPlanView' \"$FILE\" && sleep 0.5 && open \"ccplanview://refresh?file=$FILE\"",
+      "type": "command"
+    }]
+  }]
+}
+```
+
+### Why URL Scheme Instead of FileWatcher?
+
+The previous implementation used `DispatchSource.makeFileSystemObjectSource` to watch
+for file changes. This was replaced with URL scheme refresh for several reasons:
+
+1. **Use case mismatch** — CCPlanView is primarily used to view Claude Code plan files.
+   Plans are written once by Claude, then reviewed by the user. Continuous file watching
+   is unnecessary; refresh only needs to happen when Claude updates the plan.
+
+2. **Hook integration** — Claude Code hooks (`PreToolUse`) trigger at the exact moment
+   when the plan is ready for review. URL scheme allows the hook to explicitly refresh
+   the view, giving precise control over timing.
+
+3. **Simpler implementation** — FileWatcher required handling edge cases like vim-style
+   saves (delete + create), debouncing rapid changes, and managing file descriptors.
+   URL scheme is stateless and trivial to implement.
+
+4. **Resource efficiency** — No background file descriptor or dispatch source running
+   continuously. The app only does work when explicitly requested.
 
 ## WebView Rendering Pipeline
 
@@ -178,10 +210,11 @@ Granular diff functions handle nested structures: `diffListItems()`, `diffTableR
 CCPlanViewApp (@main)
   ├─ DocumentGroup(viewing: MarkdownFileDocument)
   │   └─ MarkdownFileDocument (ReferenceFileDocument)
-  │       └─ FileWatcher
   ├─ AppDelegate (via @NSApplicationDelegateAdaptor)
-  │   └─ TitlebarDragView
-  └─ ContentView
+  │   ├─ TitlebarDragView
+  │   └─ URL Scheme handler (ccplanview://refresh)
+  └─ MainContentView
+      ├─ .onReceive(.ccplanviewRefresh) ──▶ refreshContent()
       └─ MarkdownWebView
           ├─ DropContainerView
           │   └─ DropOverlayView
