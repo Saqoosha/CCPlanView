@@ -16,12 +16,15 @@ App output: `build/DerivedData/Build/Products/{Config}/CCPlanView.app`
 ## Architecture
 
 - **CCPlanViewApp.swift** - `@main` entry with `DocumentGroup(viewing:)` for multi-window support
-- **AppDelegate.swift** - Sets up TitlebarDragView on new windows via `NSWindow.didBecomeKeyNotification`
-- **ContentView.swift** - Hosts MarkdownWebView
+- **AppDelegate.swift** - Sets up TitlebarDragView, handles URL Scheme (`ccplanview://refresh?file=...`)
 - **MarkdownWebView.swift** - `NSViewRepresentable` wrapping WKWebView + DropContainerView/DropOverlayView for drag & drop
-- **MarkdownFileDocument.swift** - `ReferenceFileDocument` conforming document with FileWatcher integration
-- **FileWatcher.swift** - `DispatchSource` file monitoring with debounce, handles vim-style delete+create saves
+- **MarkdownFileDocument.swift** - `ReferenceFileDocument` conforming document
 - **Resources/index.html** - HTML template with marked.js + highlight.js, called via `evaluateJavaScript`
+
+## URL Scheme
+
+- `ccplanview://refresh` - Refresh all open documents
+- `ccplanview://refresh?file=/path/to/file.md` - Refresh specific file (symlinks resolved for comparison)
 
 ## Key Design Decisions
 
@@ -43,4 +46,21 @@ App output: `build/DerivedData/Build/Products/{Config}/CCPlanView.app`
 - `scripts/package_dmg.sh` - DMG creation + notarization
 - `scripts/release.sh` - version bump + jj + gh release
 
-<!-- Live reload test: edit timestamp 02:21 - UPDATED! -->
+## Debugging macOS Swift App
+
+Use `Logger` from `os` framework for debug logging:
+
+```swift
+import os
+private let logger = Logger(subsystem: "sh.saqoo.ccplanview", category: "MyCategory")
+
+// Use privacy: .public to see actual values in logs
+logger.info("My value: \(someValue, privacy: .public)")
+```
+
+View logs with:
+```bash
+/usr/bin/log stream --predicate 'subsystem == "sh.saqoo.ccplanview"' --level debug
+```
+
+**Note**: Default log output shows `<private>` for interpolated values. Use `privacy: .public` to reveal actual values during debugging.

@@ -32,7 +32,6 @@ struct MainContentView: View {
     let fileURL: URL?
     @Environment(\.colorScheme) private var colorScheme
     @State private var renderedMarkdown: String = ""
-    @State private var fileWatcher: FileWatcher?
 
     private var backgroundColor: Color {
         colorScheme == .dark
@@ -70,10 +69,18 @@ struct MainContentView: View {
         .ignoresSafeArea()
         .navigationTitle(fileURL?.lastPathComponent ?? "CCPlanView")
         .onAppear {
-            updateContentAndWatch()
+            loadContent()
         }
         .onChange(of: fileURL) { _, _ in
-            updateContentAndWatch()
+            loadContent()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ccplanviewRefresh)) { notification in
+            if let targetURL = notification.object as? URL {
+                let myPath = fileURL?.resolvingSymlinksInPath().path
+                let targetPath = targetURL.resolvingSymlinksInPath().path
+                guard targetPath == myPath else { return }
+            }
+            refreshContent()
         }
     }
 
@@ -85,21 +92,14 @@ struct MainContentView: View {
         NSDocumentController.shared.openDocument(nil)
     }
 
-    private func updateContentAndWatch() {
-        if let fileURL {
-            renderedMarkdown = document.markdown
-            fileWatcher?.stop()
-            fileWatcher = FileWatcher(url: fileURL) { [fileURL] in
-                DispatchQueue.main.async {
-                    let data = try! Data(contentsOf: fileURL)
-                    renderedMarkdown = String(decoding: data, as: UTF8.self)
-                }
-            }
-            fileWatcher?.start()
-        } else {
-            fileWatcher?.stop()
-            fileWatcher = nil
-            renderedMarkdown = ""
+    private func loadContent() {
+        renderedMarkdown = document.markdown
+    }
+
+    private func refreshContent() {
+        guard let fileURL else { return }
+        if let data = try? Data(contentsOf: fileURL) {
+            renderedMarkdown = String(decoding: data, as: UTF8.self)
         }
     }
 }

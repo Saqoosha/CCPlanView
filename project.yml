@@ -47,6 +47,10 @@ targets:
         NSHighResolutionCapable: true
         LSApplicationCategoryType: public.app-category.developer-tools
         NSHumanReadableCopyright: "© 2026 Saqoosha. MIT License."
+        CFBundleURLTypes:
+          - CFBundleURLName: CCPlanView URL Scheme
+            CFBundleURLSchemes:
+              - ccplanview
         CFBundleDocumentTypes:
           - CFBundleTypeName: Markdown Document
             CFBundleTypeRole: Viewer

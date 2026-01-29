@@ -51,6 +51,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls {
+            if url.scheme == "ccplanview" && url.host == "refresh" {
+                var targetFileURL: URL?
+                if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                   let filePath = components.queryItems?.first(where: { $0.name == "file" })?.value {
+                    targetFileURL = URL(fileURLWithPath: filePath)
+                }
+                NotificationCenter.default.post(name: .ccplanviewRefresh, object: targetFileURL)
+            } else {
+                NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
+            }
+        }
+    }
+
     @objc private func windowDidBecomeKey(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         setupTitlebarDragView(for: window)
