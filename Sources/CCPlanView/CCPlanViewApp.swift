@@ -16,6 +16,7 @@ extension FocusedValues {
 struct CCPlanViewApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @FocusedValue(\.showDiff) var showDiff
+    @State private var isHookConfigured = HookManager.isHookConfigured()
 
     var body: some Scene {
         DocumentGroup(viewing: MarkdownFileDocument.self) { file in
@@ -37,6 +38,25 @@ struct CCPlanViewApp: App {
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button {
+                    if isHookConfigured {
+                        removeHook()
+                    } else {
+                        installHook()
+                    }
+                } label: {
+                    if isHookConfigured {
+                        Text("✓ Claude Code Hooks Installed")
+                    } else {
+                        Text("Setup Claude Code Hooks...")
+                    }
+                }
+                .disabled(!HookManager.isClaudeCodeInstalled())
+                .onReceive(NotificationCenter.default.publisher(for: .hookConfigurationChanged)) { _ in
+                    isHookConfigured = HookManager.isHookConfigured()
+                }
+            }
             CommandGroup(after: .toolbar) {
                 Button(showDiff?.wrappedValue == true ? "Hide Diff" : "Show Diff") {
                     showDiff?.wrappedValue.toggle()
@@ -45,6 +65,61 @@ struct CCPlanViewApp: App {
                 .disabled(showDiff == nil)
             }
         }
+    }
+
+    private func installHook() {
+        let alert = NSAlert()
+        alert.messageText = "Setup Claude Code Hooks?"
+        alert.informativeText =
+            "CCPlanView will automatically open plan files when Claude exits plan mode."
+        alert.addButton(withTitle: "Install")
+        alert.addButton(withTitle: "Cancel")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            try HookManager.installHook()
+            isHookConfigured = true
+            showSuccessAlert()
+        } catch {
+            showErrorAlert(error)
+        }
+    }
+
+    private func showSuccessAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Hooks Installed"
+        alert.informativeText =
+            "Claude Code hooks have been configured. CCPlanView will open plan files when Claude exits plan mode."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func removeHook() {
+        let alert = NSAlert()
+        alert.messageText = "Remove Claude Code Hooks?"
+        alert.informativeText = "CCPlanView will no longer open automatically when Claude exits plan mode."
+        alert.addButton(withTitle: "Remove")
+        alert.addButton(withTitle: "Cancel")
+
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        do {
+            try HookManager.removeHook()
+            isHookConfigured = false
+        } catch {
+            showErrorAlert(error)
+        }
+    }
+
+    private func showErrorAlert(_ error: Error) {
+        let alert = NSAlert()
+        alert.messageText = "Failed to Configure Hooks"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .critical
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
 
