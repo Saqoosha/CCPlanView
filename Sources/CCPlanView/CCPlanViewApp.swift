@@ -22,6 +22,7 @@ struct CCPlanViewApp: App {
         DocumentGroup(viewing: MarkdownFileDocument.self) { file in
             MainContentView(document: file.document, fileURL: file.fileURL)
         }
+        .defaultSize(width: 800, height: 900)
         .defaultWindowPlacement { _, _ in
             let defaultSize = CGSize(width: 800, height: 900)
             if let frameString = UserDefaults.standard.string(forKey: AppDelegate.windowFrameKey) {
