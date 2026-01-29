@@ -7,8 +7,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     fileprivate static let windowButtonsWidth: CGFloat = 70
     static let windowFrameKey = "CCPlanViewWindowFrame"
 
-    private var hasOpenedInitialFile = false
-
     func applicationDidFinishLaunching(_ notification: Notification) {
         NotificationCenter.default.addObserver(
             self,
@@ -54,36 +52,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        true
-    }
-
-    func application(_ application: NSApplication, open urls: [URL]) {
-        for (index, url) in urls.enumerated() {
-            if index == 0 && !hasOpenedInitialFile {
-                // First file goes to the existing empty window
-                hasOpenedInitialFile = true
-                WindowManager.shared.openFile(url)
-                NotificationCenter.default.post(
-                    name: .openFileInWindow,
-                    object: nil,
-                    userInfo: ["url": url]
-                )
-            } else {
-                // Subsequent files open new windows
-                WindowManager.shared.openFile(url)
-                // SwiftUI WindowGroup will create new window when we post this
-                // But we need a way to open a new window...
-                // For now, open in current window (will be fixed with proper multi-window support)
-                NotificationCenter.default.post(
-                    name: .openFileInWindow,
-                    object: nil,
-                    userInfo: ["url": url]
-                )
-            }
-        }
-    }
-
     @objc private func windowDidBecomeKey(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         setupTitlebarDragView(for: window)
@@ -94,6 +62,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
               !themeFrame.subviews.contains(where: { $0 is TitlebarDragView })
         else { return }
 
+        window.identifier = NSUserInterfaceItemIdentifier(Constants.mainWindowIdentifier)
         window.titlebarAppearsTransparent = true
 
         let dragView = TitlebarDragView()

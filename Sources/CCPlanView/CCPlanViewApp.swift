@@ -1,44 +1,13 @@
+import AppKit
 import SwiftUI
-
-@MainActor
-@Observable
-final class RecentFilesManager {
-    static let shared = RecentFilesManager()
-
-    var recentFiles: [URL] = NSDocumentController.shared.recentDocumentURLs
-
-    private init() {
-        NotificationCenter.default.addObserver(
-            forName: .recentFilesDidChange,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.recentFiles = NSDocumentController.shared.recentDocumentURLs
-            }
-        }
-    }
-
-    func openFile(_ url: URL, openWindow: OpenWindowAction) {
-        WindowManager.shared.openFile(url)
-        openWindow(id: "main")
-    }
-
-    func clearRecents() {
-        NSDocumentController.shared.clearRecentDocuments(nil)
-        recentFiles = []
-    }
-}
 
 @main
 struct CCPlanViewApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
-    @Environment(\.openWindow) private var openWindow
-    @State private var recentFilesManager = RecentFilesManager.shared
 
     var body: some Scene {
-        WindowGroup(id: "main") {
-            MainContentView()
+        DocumentGroup(newDocument: MarkdownFileDocument()) { file in
+            MainContentView(document: file.$document, fileURL: file.fileURL)
         }
         .defaultWindowPlacement { _, _ in
             let defaultSize = CGSize(width: 800, height: 900)
@@ -56,58 +25,22 @@ struct CCPlanViewApp: App {
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified(showsTitle: true))
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("Open...") {
-                    openFileWithPanel()
+            CommandGroup(replacing: .saveItem) {
+                Button("Close") {
+                    NSApp.keyWindow?.performClose(nil)
                 }
-                .keyboardShortcut("o", modifiers: .command)
-
-                Menu("Open Recent") {
-                    ForEach(recentFilesManager.recentFiles, id: \.self) { url in
-                        Button(url.lastPathComponent) {
-                            recentFilesManager.openFile(url, openWindow: openWindow)
-                        }
-                    }
-
-                    if !recentFilesManager.recentFiles.isEmpty {
-                        Divider()
-                    }
-
-                    Button("Clear Menu") {
-                        recentFilesManager.clearRecents()
-                    }
-                    .disabled(recentFilesManager.recentFiles.isEmpty)
-                }
-            }
-        }
-    }
-
-    private func openFileWithPanel() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-
-        if panel.runModal() == .OK, let url = panel.url {
-            // If no windows exist, store URL and create window
-            if NSApp.windows.filter({ $0.isVisible }).isEmpty {
-                WindowManager.shared.openFile(url)
-                openWindow(id: "main")
-            } else {
-                NotificationCenter.default.post(
-                    name: .openFileInWindow,
-                    object: nil,
-                    userInfo: ["url": url]
-                )
+                .keyboardShortcut("w", modifiers: .command)
             }
         }
     }
 }
 
 struct MainContentView: View {
-    @StateObject private var document = MarkdownDocument()
-    @State private var fileURL: URL?
+    @Binding var document: MarkdownFileDocument
+    let fileURL: URL?
     @Environment(\.colorScheme) private var colorScheme
+    @State private var renderedMarkdown: String = ""
+    @State private var fileWatcher: FileWatcher?
 
     private var backgroundColor: Color {
         colorScheme == .dark
@@ -119,10 +52,10 @@ struct MainContentView: View {
         ZStack(alignment: .top) {
             backgroundColor
 
-            if document.fileURL != nil {
+            if fileURL != nil {
                 MarkdownWebView(
-                    markdown: document.markdownContent,
-                    fileURL: document.fileURL,
+                    markdown: renderedMarkdown,
+                    fileURL: fileURL,
                     onFileDrop: { url in
                         openFile(url)
                     }
@@ -143,35 +76,38 @@ struct MainContentView: View {
             }
         }
         .ignoresSafeArea()
-        .navigationTitle(document.fileURL?.lastPathComponent ?? "CCPlanView")
+        .navigationTitle(fileURL?.lastPathComponent ?? "CCPlanView")
         .onAppear {
-            // Check if there's a pending URL from AppDelegate
-            if let url = WindowManager.shared.consumeURL() {
-                openFile(url)
-            }
+            updateContentAndWatch()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .openFileInWindow)) { notification in
-            if let url = notification.userInfo?["url"] as? URL {
-                openFile(url)
-            }
+        .onChange(of: fileURL) { _, _ in
+            updateContentAndWatch()
         }
     }
 
     private func openFile(_ url: URL) {
-        fileURL = url
-        document.open(url: url)
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
-        NotificationCenter.default.post(name: .recentFilesDidChange, object: nil)
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in }
     }
 
     private func showOpenPanel() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText]
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
+        NSDocumentController.shared.openDocument(nil)
+    }
 
-        if panel.runModal() == .OK, let url = panel.url {
-            openFile(url)
+    private func updateContentAndWatch() {
+        if let fileURL {
+            renderedMarkdown = document.markdown
+            fileWatcher?.stop()
+            fileWatcher = FileWatcher(url: fileURL) { [fileURL] in
+                DispatchQueue.main.async {
+                    let data = try! Data(contentsOf: fileURL)
+                    renderedMarkdown = String(decoding: data, as: UTF8.self)
+                }
+            }
+            fileWatcher?.start()
+        } else {
+            fileWatcher?.stop()
+            fileWatcher = nil
+            renderedMarkdown = ""
         }
     }
 }
@@ -259,9 +195,4 @@ struct EmptyStateView: View {
             return true
         }
     }
-}
-
-extension Notification.Name {
-    static let openFileInWindow = Notification.Name("openFileInWindow")
-    static let recentFilesDidChange = Notification.Name("recentFilesDidChange")
 }
