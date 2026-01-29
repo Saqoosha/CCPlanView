@@ -18,6 +18,7 @@ struct MarkdownWebView: NSViewRepresentable {
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
         config.userContentController.add(context.coordinator, name: "diffStatus")
         let webView = WKWebView(frame: .zero, configuration: config)
+        webView.isInspectable = true
         webView.underPageBackgroundColor = .white
         let container = DropContainerView(webView: webView)
         container.onFileDrop = onFileDrop

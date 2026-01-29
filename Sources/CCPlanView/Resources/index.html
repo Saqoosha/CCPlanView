@@ -62,17 +62,22 @@
         [data-color-mode="dark"] .markdown-body table tr.deleted-block > th {
             background-color: rgba(255, 220, 224, 0.15);
         }
+        /* Override github-markdown.css inline display for code with diff spans */
+        .markdown-body pre > code {
+            display: block !important;
+        }
+        .code-line {
+            display: block;
+        }
         .code-line-changed {
             background-color: #dcffdc;
-            display: inline-block;
-            width: 100%;
+            display: block;
         }
         .code-line-deleted {
             background-color: #ffdce0;
             text-decoration: line-through;
             opacity: 0.7;
-            display: inline-block;
-            width: 100%;
+            display: block;
         }
         [data-color-mode="dark"] .code-line-changed {
             background-color: rgba(220, 255, 220, 0.15);
@@ -88,6 +93,12 @@
         .diff-hidden .deleted-block,
         .diff-hidden .code-line-deleted {
             display: none;
+            height: 0;
+            margin: 0;
+            padding: 0;
+            line-height: 0;
+            font-size: 0;
+            overflow: hidden;
         }
     </style>
 </head>
@@ -753,11 +764,11 @@
                                     newHTMLLines.push(`<span class="code-line-deleted">${escHtml(dLine)}</span>`);
                                 }
                                 deletedByIdx.delete(li);
-                                newHTMLLines.push(hl);
+                                newHTMLLines.push(`<span class="code-line">${hl}</span>`);
                             } else if (cd.changed.has(li)) {
                                 newHTMLLines.push(`<span class="code-line-changed">${hl}</span>`);
                             } else {
-                                newHTMLLines.push(hl);
+                                newHTMLLines.push(`<span class="code-line">${hl}</span>`);
                             }
                         }
                         for (const [, lines] of deletedByIdx) {
@@ -766,7 +777,7 @@
                             }
                         }
 
-                        codeEl.innerHTML = newHTMLLines.join('\n');
+                        codeEl.innerHTML = newHTMLLines.join('');
                         setFirst(el);
                     } else if (detail.type === 'blockquote') {
                         const bqDiff = detail.bqDiff;
@@ -863,13 +874,13 @@
                                     } else if (deletedByIdx.has(li)) {
                                         for (const d of deletedByIdx.get(li)) newHTMLLines.push(`<span class="code-line-deleted">${escHtml(d)}</span>`);
                                         deletedByIdx.delete(li);
-                                        newHTMLLines.push(hl);
+                                        newHTMLLines.push(`<span class="code-line">${hl}</span>`);
                                     } else if (cd.changed.has(li)) {
                                         newHTMLLines.push(`<span class="code-line-changed">${hl}</span>`);
-                                    } else { newHTMLLines.push(hl); }
+                                    } else { newHTMLLines.push(`<span class="code-line">${hl}</span>`); }
                                 }
                                 for (const [, lines] of deletedByIdx) { for (const d of lines) newHTMLLines.push(`<span class="code-line-deleted">${escHtml(d)}</span>`); }
-                                codeEl.innerHTML = newHTMLLines.join('\n');
+                                codeEl.innerHTML = newHTMLLines.join('');
                                 setFirst(subEl);
                             } else if (subDetail.type === 'blockquote') {
                                 // Nested blockquote — mark as changed (full recursive rendering is complex)
