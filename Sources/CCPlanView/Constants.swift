@@ -7,5 +7,7 @@ enum Constants {
 
 extension Notification.Name {
     static let ccplanviewRefresh = Notification.Name("CCPlanViewRefresh")
+    static let ccplanviewFileChanged = Notification.Name("CCPlanViewFileChanged")
+    static let ccplanviewDiffStatusChanged = Notification.Name("CCPlanViewDiffStatusChanged")
     static let hookConfigurationChanged = Notification.Name("HookConfigurationChanged")
 }

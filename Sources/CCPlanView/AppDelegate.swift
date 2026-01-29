@@ -5,7 +5,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     fileprivate static let titlebarHeight: CGFloat = 52
     fileprivate static let windowButtonsWidth: CGFloat = 70
-    fileprivate static let toolbarButtonsWidth: CGFloat = 50
+    fileprivate static let toolbarButtonsWidth: CGFloat = 100
     static let windowFrameKey = "CCPlanViewWindowFrame"
 
     private static let dontAskHookSetupKey = "dontAskHookSetup"

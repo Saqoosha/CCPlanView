@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import WebKit
 
@@ -6,7 +7,6 @@ struct MarkdownWebView: NSViewRepresentable {
     let fileURL: URL?
     let showDiff: Bool
     let onFileDrop: (URL) -> Void
-    var onDiffStatusChange: ((Bool) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
 
     func makeCoordinator() -> Coordinator {
@@ -30,7 +30,7 @@ struct MarkdownWebView: NSViewRepresentable {
         }
 
         context.coordinator.webView = webView
-        context.coordinator.onDiffStatusChange = onDiffStatusChange
+        context.coordinator.fileURL = fileURL
         return container
     }
 
@@ -52,6 +52,7 @@ struct MarkdownWebView: NSViewRepresentable {
 
         if fileChanged {
             context.coordinator.lastFileURL = fileURL
+            context.coordinator.fileURL = fileURL
             webView.evaluateJavaScript("resetDiff();")
             // Set base URL for resolving relative image paths
             if let fileURL = fileURL {
@@ -106,14 +107,18 @@ struct MarkdownWebView: NSViewRepresentable {
         var pendingMarkdown: String?
         var pendingIsDarkMode: Bool?
         var pendingFileURL: URL?
-        var onDiffStatusChange: ((Bool) -> Void)?
+        var fileURL: URL?
 
         func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
             if message.name == "diffStatus",
                let body = message.body as? [String: Any],
                let hasDiff = body["hasDiff"] as? Bool {
                 DispatchQueue.main.async {
-                    self.onDiffStatusChange?(hasDiff)
+                    NotificationCenter.default.post(
+                        name: .ccplanviewDiffStatusChanged,
+                        object: self.fileURL,
+                        userInfo: ["hasDiff": hasDiff]
+                    )
                 }
             }
         }

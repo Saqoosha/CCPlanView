@@ -5,10 +5,19 @@ struct ShowDiffKey: FocusedValueKey {
     typealias Value = Binding<Bool>
 }
 
+struct RefreshActionKey: FocusedValueKey {
+    typealias Value = () -> Void
+}
+
 extension FocusedValues {
     var showDiff: Binding<Bool>? {
         get { self[ShowDiffKey.self] }
         set { self[ShowDiffKey.self] = newValue }
+    }
+
+    var refreshAction: (() -> Void)? {
+        get { self[RefreshActionKey.self] }
+        set { self[RefreshActionKey.self] = newValue }
     }
 }
 
@@ -16,6 +25,7 @@ extension FocusedValues {
 struct CCPlanViewApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
     @FocusedValue(\.showDiff) var showDiff
+    @FocusedValue(\.refreshAction) var refreshAction
     @State private var isHookConfigured = HookManager.isHookConfigured()
 
     var body: some Scene {
@@ -64,6 +74,14 @@ struct CCPlanViewApp: App {
                 }
                 .keyboardShortcut("d", modifiers: .command)
                 .disabled(showDiff == nil)
+
+                Divider()
+
+                Button("Reload") {
+                    refreshAction?()
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(refreshAction == nil)
             }
         }
     }
@@ -131,6 +149,8 @@ struct MainContentView: View {
     @State private var renderedMarkdown: String = ""
     @State private var showDiff: Bool = true
     @State private var hasDiff: Bool = false
+    @State private var fileWatcher: FileWatcher?
+    @State private var needsReload: Bool = false
 
     private var backgroundColor: Color {
         colorScheme == .dark
@@ -149,9 +169,6 @@ struct MainContentView: View {
                     showDiff: showDiff,
                     onFileDrop: { url in
                         openFile(url)
-                    },
-                    onDiffStatusChange: { newHasDiff in
-                        hasDiff = newHasDiff
                     }
                 )
                 LinearGradient(
@@ -172,23 +189,33 @@ struct MainContentView: View {
         .ignoresSafeArea()
         .navigationTitle(fileURL?.lastPathComponent ?? "CCPlanView")
         .focusedSceneValue(\.showDiff, $showDiff)
+        .focusedSceneValue(\.refreshAction, refreshContent)
         .toolbar {
-            if hasDiff {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showDiff.toggle()
-                    } label: {
-                        Image(systemName: showDiff ? "plusminus.circle.fill" : "plusminus.circle")
-                    }
-                    .help(showDiff ? "Hide Diff" : "Show Diff")
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    showDiff.toggle()
+                } label: {
+                    Image(systemName: showDiff ? "plusminus.circle.fill" : "plusminus.circle")
                 }
+                .help(showDiff ? "Hide Diff" : "Show Diff")
+                .disabled(!hasDiff)
+
+                Button {
+                    refreshContent()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .help("Reload")
+                .disabled(!needsReload)
             }
         }
         .onAppear {
             loadContent()
+            setupFileWatcher()
         }
         .onChange(of: fileURL) { _, _ in
             loadContent()
+            setupFileWatcher()
         }
         .onReceive(NotificationCenter.default.publisher(for: .ccplanviewRefresh)) { notification in
             if let targetURL = notification.object as? URL {
@@ -197,6 +224,23 @@ struct MainContentView: View {
                 guard targetPath == myPath else { return }
             }
             refreshContent()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ccplanviewFileChanged)) { notification in
+            guard let targetURL = notification.object as? URL else { return }
+            let myPath = fileURL?.resolvingSymlinksInPath().path
+            let targetPath = targetURL.resolvingSymlinksInPath().path
+            guard targetPath == myPath else { return }
+            needsReload = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ccplanviewDiffStatusChanged)) { notification in
+            if let targetURL = notification.object as? URL {
+                let myPath = fileURL?.resolvingSymlinksInPath().path
+                let targetPath = targetURL.resolvingSymlinksInPath().path
+                guard targetPath == myPath else { return }
+            }
+            if let newHasDiff = notification.userInfo?["hasDiff"] as? Bool {
+                hasDiff = newHasDiff
+            }
         }
     }
 
@@ -216,6 +260,17 @@ struct MainContentView: View {
         guard let fileURL else { return }
         if let data = try? Data(contentsOf: fileURL) {
             renderedMarkdown = String(decoding: data, as: UTF8.self)
+        }
+        needsReload = false
+    }
+
+    private func setupFileWatcher() {
+        fileWatcher?.stop()
+        fileWatcher = nil
+        needsReload = false
+        guard let fileURL else { return }
+        fileWatcher = FileWatcher(fileURL: fileURL) {
+            NotificationCenter.default.post(name: .ccplanviewFileChanged, object: fileURL)
         }
     }
 }
