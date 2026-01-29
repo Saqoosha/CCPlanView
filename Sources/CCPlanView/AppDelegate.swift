@@ -1,9 +1,11 @@
 import AppKit
 import SwiftUI
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     fileprivate static let titlebarHeight: CGFloat = 52
     fileprivate static let windowButtonsWidth: CGFloat = 70
+    fileprivate static let toolbarButtonsWidth: CGFloat = 50
     static let windowFrameKey = "CCPlanViewWindowFrame"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -100,7 +102,9 @@ final class TitlebarDragView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
         guard bounds.contains(local) else { return nil }
+        // Leave space for window buttons (left) and toolbar buttons (right)
         if local.x < AppDelegate.windowButtonsWidth { return nil }
+        if local.x > bounds.width - AppDelegate.toolbarButtonsWidth { return nil }
         return self
     }
 }
