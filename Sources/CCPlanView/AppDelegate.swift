@@ -1,13 +1,14 @@
 import AppKit
 import SwiftUI
-
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     fileprivate static let titlebarHeight: CGFloat = 52
     fileprivate static let windowButtonsWidth: CGFloat = 70
     static let windowFrameKey = "CCPlanViewWindowFrame"
+    private var fileMenu: NSMenu!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        refreshFileMenuReference()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowDidBecomeKey(_:)),
@@ -74,6 +75,70 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             dragView.trailingAnchor.constraint(equalTo: themeFrame.trailingAnchor),
             dragView.heightAnchor.constraint(equalToConstant: Self.titlebarHeight),
         ])
+    }
+
+    private func refreshFileMenuReference() {
+        let currentFileMenu = NSApp.mainMenu!.items.first { $0.title == "File" }!.submenu!
+        if fileMenu !== currentFileMenu {
+            fileMenu = currentFileMenu
+            fileMenu.delegate = self
+        }
+        rebuildFileMenu()
+    }
+
+    private func rebuildFileMenu() {
+        fileMenu.removeAllItems()
+
+        let newItem = NSMenuItem(title: "New", action: #selector(NSDocumentController.newDocument(_:)), keyEquivalent: "n")
+        newItem.keyEquivalentModifierMask = [.command]
+        fileMenu.addItem(newItem)
+        fileMenu.addItem(.separator())
+
+        let openItem = NSMenuItem(title: "Open…", action: #selector(NSDocumentController.openDocument(_:)), keyEquivalent: "o")
+        openItem.keyEquivalentModifierMask = [.command]
+        fileMenu.addItem(openItem)
+
+        let openRecentItem = NSMenuItem(title: "Open Recent", action: nil, keyEquivalent: "")
+        let openRecentMenu = NSMenu(title: "Open Recent")
+        let recentURLs = NSDocumentController.shared.recentDocumentURLs
+        if recentURLs.isEmpty {
+            let emptyItem = NSMenuItem(title: "No Recent Documents", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            openRecentMenu.addItem(emptyItem)
+        } else {
+            for url in recentURLs {
+                let item = NSMenuItem(title: url.lastPathComponent, action: #selector(openRecentDocument(_:)), keyEquivalent: "")
+                item.representedObject = url
+                openRecentMenu.addItem(item)
+            }
+        }
+        openRecentMenu.addItem(.separator())
+        let clearItem = NSMenuItem(title: "Clear Menu", action: #selector(NSDocumentController.clearRecentDocuments(_:)), keyEquivalent: "")
+        openRecentMenu.addItem(clearItem)
+        openRecentItem.submenu = openRecentMenu
+        fileMenu.addItem(openRecentItem)
+
+        fileMenu.addItem(.separator())
+        let closeItem = NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        closeItem.keyEquivalentModifierMask = [.command]
+        fileMenu.addItem(closeItem)
+        let closeAllItem = NSMenuItem(title: "Close All", action: Selector(("closeAll:")), keyEquivalent: "")
+        fileMenu.addItem(closeAllItem)
+    }
+
+    @objc private func openRecentDocument(_ sender: NSMenuItem) {
+        let url = sender.representedObject as! URL
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, _ in
+            DispatchQueue.main.async {
+                self.refreshFileMenuReference()
+            }
+        }
+    }
+}
+
+extension AppDelegate: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        if menu === fileMenu { refreshFileMenuReference() }
     }
 }
 

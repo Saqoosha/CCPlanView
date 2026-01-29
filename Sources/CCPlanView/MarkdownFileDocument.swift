@@ -5,23 +5,25 @@ extension UTType {
     static let markdown = UTType(filenameExtension: "md")!
 }
 
-struct MarkdownFileDocument: FileDocument {
+final class MarkdownFileDocument: ReferenceFileDocument, ObservableObject {
     static var readableContentTypes: [UTType] { [.markdown, .plainText] }
-    static var writableContentTypes: [UTType] { [] }
 
-    var markdown: String
+    @Published var markdown: String
 
     init(markdown: String = "") {
         self.markdown = markdown
     }
 
-    init(configuration: ReadConfiguration) throws {
-        let data = try configuration.file.regularFileContents!
+    required init(configuration: ReadConfiguration) throws {
+        let data = configuration.file.regularFileContents!
         markdown = String(decoding: data, as: UTF8.self)
     }
 
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
-        let data = Data(markdown.utf8)
-        return FileWrapper(regularFileWithContents: data)
+    func snapshot(contentType: UTType) throws -> String {
+        markdown
+    }
+
+    func fileWrapper(snapshot: String, configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(snapshot.utf8))
     }
 }

@@ -6,8 +6,8 @@ struct CCPlanViewApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
 
     var body: some Scene {
-        DocumentGroup(newDocument: MarkdownFileDocument()) { file in
-            MainContentView(document: file.$document, fileURL: file.fileURL)
+        DocumentGroup(viewing: MarkdownFileDocument.self) { file in
+            MainContentView(document: file.document, fileURL: file.fileURL)
         }
         .defaultWindowPlacement { _, _ in
             let defaultSize = CGSize(width: 800, height: 900)
@@ -24,19 +24,11 @@ struct CCPlanViewApp: App {
         }
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified(showsTitle: true))
-        .commands {
-            CommandGroup(replacing: .saveItem) {
-                Button("Close") {
-                    NSApp.keyWindow?.performClose(nil)
-                }
-                .keyboardShortcut("w", modifiers: .command)
-            }
-        }
     }
 }
 
 struct MainContentView: View {
-    @Binding var document: MarkdownFileDocument
+    @ObservedObject var document: MarkdownFileDocument
     let fileURL: URL?
     @Environment(\.colorScheme) private var colorScheme
     @State private var renderedMarkdown: String = ""
