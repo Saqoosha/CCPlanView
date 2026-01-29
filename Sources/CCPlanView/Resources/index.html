@@ -80,6 +80,15 @@
         [data-color-mode="dark"] .code-line-deleted {
             background-color: rgba(255, 220, 224, 0.15);
         }
+        /* Hide diff when disabled */
+        .diff-hidden .changed-block,
+        .diff-hidden .code-line-changed {
+            background-color: transparent;
+        }
+        .diff-hidden .deleted-block,
+        .diff-hidden .code-line-deleted {
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -110,9 +119,15 @@
         });
 
         let previousTokens = null;
+        let diffEnabled = true;
 
         function resetDiff() {
             previousTokens = null;
+        }
+
+        function setDiffEnabled(enabled) {
+            diffEnabled = enabled;
+            document.body.classList.toggle('diff-hidden', !enabled);
         }
 
         function range(count) {
@@ -549,7 +564,12 @@
             const hasChanges = diffResult &&
                 (diffResult.changes.size > 0 || diffResult.deletions.length > 0);
 
-            if (hasChanges) {
+            // Notify Swift about diff status
+            if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.diffStatus) {
+                window.webkit.messageHandlers.diffStatus.postMessage({ hasDiff: hasChanges });
+            }
+
+            if (hasChanges && diffEnabled) {
                 let firstChanged = null;
                 const setFirst = el => { if (firstChanged === null) firstChanged = el; };
 

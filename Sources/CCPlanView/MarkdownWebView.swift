@@ -4,7 +4,9 @@ import WebKit
 struct MarkdownWebView: NSViewRepresentable {
     let markdown: String
     let fileURL: URL?
+    let showDiff: Bool
     let onFileDrop: (URL) -> Void
+    var onDiffStatusChange: ((Bool) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
 
     func makeCoordinator() -> Coordinator {
@@ -14,6 +16,7 @@ struct MarkdownWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> DropContainerView {
         let config = WKWebViewConfiguration()
         config.preferences.setValue(true, forKey: "allowFileAccessFromFileURLs")
+        config.userContentController.add(context.coordinator, name: "diffStatus")
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.underPageBackgroundColor = .white
         let container = DropContainerView(webView: webView)
@@ -26,6 +29,7 @@ struct MarkdownWebView: NSViewRepresentable {
         }
 
         context.coordinator.webView = webView
+        context.coordinator.onDiffStatusChange = onDiffStatusChange
         return container
     }
 
@@ -71,6 +75,12 @@ struct MarkdownWebView: NSViewRepresentable {
             let escaped = Self.escapeForJS(markdown)
             webView.evaluateJavaScript("renderMarkdown(`\(escaped)`);")
         }
+
+        let diffChanged = context.coordinator.lastShowDiff != showDiff
+        if diffChanged {
+            context.coordinator.lastShowDiff = showDiff
+            webView.evaluateJavaScript("setDiffEnabled(\(showDiff));")
+        }
     }
 
     private static func escapeForJS(_ string: String) -> String {
@@ -81,7 +91,7 @@ struct MarkdownWebView: NSViewRepresentable {
             .replacingOccurrences(of: "</script>", with: "<\\/script>")
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         var webView: WKWebView? {
             didSet {
                 webView?.navigationDelegate = self
@@ -90,10 +100,22 @@ struct MarkdownWebView: NSViewRepresentable {
         var lastMarkdown: String?
         var lastIsDarkMode: Bool?
         var lastFileURL: URL?
+        var lastShowDiff: Bool?
         var isPageLoaded = false
         var pendingMarkdown: String?
         var pendingIsDarkMode: Bool?
         var pendingFileURL: URL?
+        var onDiffStatusChange: ((Bool) -> Void)?
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            if message.name == "diffStatus",
+               let body = message.body as? [String: Any],
+               let hasDiff = body["hasDiff"] as? Bool {
+                DispatchQueue.main.async {
+                    self.onDiffStatusChange?(hasDiff)
+                }
+            }
+        }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
             isPageLoaded = true

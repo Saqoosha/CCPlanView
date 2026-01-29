@@ -1,9 +1,21 @@
 import AppKit
 import SwiftUI
 
+struct ShowDiffKey: FocusedValueKey {
+    typealias Value = Binding<Bool>
+}
+
+extension FocusedValues {
+    var showDiff: Binding<Bool>? {
+        get { self[ShowDiffKey.self] }
+        set { self[ShowDiffKey.self] = newValue }
+    }
+}
+
 @main
 struct CCPlanViewApp: App {
     @NSApplicationDelegateAdaptor private var appDelegate: AppDelegate
+    @FocusedValue(\.showDiff) var showDiff
 
     var body: some Scene {
         DocumentGroup(viewing: MarkdownFileDocument.self) { file in
@@ -24,6 +36,15 @@ struct CCPlanViewApp: App {
         }
         .windowStyle(.automatic)
         .windowToolbarStyle(.unified(showsTitle: true))
+        .commands {
+            CommandGroup(after: .toolbar) {
+                Button(showDiff?.wrappedValue == true ? "Hide Diff" : "Show Diff") {
+                    showDiff?.wrappedValue.toggle()
+                }
+                .keyboardShortcut("d", modifiers: .command)
+                .disabled(showDiff == nil)
+            }
+        }
     }
 }
 
@@ -32,6 +53,8 @@ struct MainContentView: View {
     let fileURL: URL?
     @Environment(\.colorScheme) private var colorScheme
     @State private var renderedMarkdown: String = ""
+    @State private var showDiff: Bool = true
+    @State private var hasDiff: Bool = false
 
     private var backgroundColor: Color {
         colorScheme == .dark
@@ -47,8 +70,12 @@ struct MainContentView: View {
                 MarkdownWebView(
                     markdown: renderedMarkdown,
                     fileURL: fileURL,
+                    showDiff: showDiff,
                     onFileDrop: { url in
                         openFile(url)
+                    },
+                    onDiffStatusChange: { newHasDiff in
+                        hasDiff = newHasDiff
                     }
                 )
                 LinearGradient(
@@ -68,6 +95,19 @@ struct MainContentView: View {
         }
         .ignoresSafeArea()
         .navigationTitle(fileURL?.lastPathComponent ?? "CCPlanView")
+        .focusedSceneValue(\.showDiff, $showDiff)
+        .toolbar {
+            if hasDiff {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showDiff.toggle()
+                    } label: {
+                        Image(systemName: showDiff ? "plusminus.circle.fill" : "plusminus.circle")
+                    }
+                    .help(showDiff ? "Hide Diff" : "Show Diff")
+                }
+            }
+        }
         .onAppear {
             loadContent()
         }
