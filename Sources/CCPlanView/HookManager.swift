@@ -4,6 +4,7 @@ enum HookManagerError: LocalizedError, Equatable {
     case settingsCorrupted
     case settingsUnreadable
     case unexpectedStructure
+    case notifierNotFound
 
     var errorDescription: String? {
         switch self {
@@ -13,6 +14,8 @@ enum HookManagerError: LocalizedError, Equatable {
             return "Could not read Claude Code settings.json. Check file permissions."
         case .unexpectedStructure:
             return "Claude Code settings.json has unexpected structure."
+        case .notifierNotFound:
+            return "The notifier CLI tool was not found in the app bundle."
         }
     }
 }
@@ -24,20 +27,42 @@ enum HookManager {
     static var settingsPath: URL { claudeDir.appendingPathComponent("settings.json") }
 
     /// Unique identifier for CCPlanView hook command (used for detection and removal)
-    private static let hookIdentifier = "open -a 'CCPlanView'"
+    private static let hookIdentifier = "CCPlanView.app/Contents/MacOS/notifier"
+
+    /// Legacy hook identifier for migration from old command format
+    private static let legacyHookIdentifier = "open -a 'CCPlanView'"
 
     /// The matcher for CCPlanView hook - must match BOTH matcher AND command identifier
     private static let hookMatcher = "ExitPlanMode"
 
-    /// The hook command for CCPlanView
-    /// - Uses `2>/dev/null` to suppress errors when no plan files exist
-    /// - Uses URL encoding for file path to handle special characters
-    private static let hookCommand =
-        "FILE=$(ls -t ~/.claude/plans/*.md 2>/dev/null | head -1) && [ -n \"$FILE\" ] && open -a 'CCPlanView' \"$FILE\" && sleep 0.5 && open \"ccplanview://refresh?file=$(python3 -c \"import urllib.parse; print(urllib.parse.quote('$FILE', safe=''))\")\"" // swiftlint:disable:this line_length
+    /// Get the path to the notifier CLI tool in the current app bundle
+    /// Returns nil if the notifier doesn't exist
+    private static func getNotifierPath() -> String? {
+        let bundlePath = Bundle.main.bundlePath
+        let notifierPath = "\(bundlePath)/Contents/MacOS/notifier"
+        return FileManager.default.fileExists(atPath: notifierPath) ? notifierPath : nil
+    }
 
     /// Check if Claude Code is installed (.claude directory exists)
     static func isClaudeCodeInstalled() -> Bool {
         FileManager.default.fileExists(atPath: claudeDir.path)
+    }
+
+    /// Validate settings.json and return any error
+    /// Returns nil if settings are valid or don't exist yet
+    static func validateSettings() -> HookManagerError? {
+        guard FileManager.default.fileExists(atPath: settingsPath.path) else {
+            return nil  // No settings file is fine
+        }
+
+        do {
+            _ = try readSettings()
+            return nil
+        } catch let error as HookManagerError {
+            return error
+        } catch {
+            return .settingsUnreadable
+        }
     }
 
     /// Check if CCPlanView hook is configured
@@ -48,10 +73,110 @@ enum HookManager {
         return findCCPlanViewHookIndex(in: settings) != nil
     }
 
+    /// Check if hook needs update (cleanup required)
+    /// Returns true if any of:
+    /// - Legacy hook exists
+    /// - Hook path doesn't match current app bundle
+    /// - Multiple CCPlanView hooks exist
+    static func needsHookUpdate() -> Bool {
+        guard let settings = try? readSettings(),
+              let hooks = settings["hooks"] as? [String: Any],
+              let preToolUse = hooks["PreToolUse"] as? [Any]
+        else {
+            return false
+        }
+
+        guard let currentNotifierPath = getNotifierPath() else {
+            return false  // Can't update if notifier doesn't exist
+        }
+
+        var ccplanviewHookCount = 0
+        var hasCorrectPath = false
+
+        for item in preToolUse {
+            guard let hookEntry = item as? [String: Any],
+                  let matcher = hookEntry["matcher"] as? String,
+                  matcher == hookMatcher,
+                  let hooksList = hookEntry["hooks"] as? [[String: Any]]
+            else {
+                continue
+            }
+
+            for hook in hooksList {
+                guard let command = hook["command"] as? String else { continue }
+
+                // Check for legacy or new format
+                if command.contains(hookIdentifier) || command.contains(legacyHookIdentifier) {
+                    ccplanviewHookCount += 1
+
+                    // Check if this is the correct path
+                    if command == currentNotifierPath {
+                        hasCorrectPath = true
+                    }
+                }
+            }
+        }
+
+        // Needs update if: multiple hooks, or no correct path hook exists
+        return ccplanviewHookCount > 1 || (ccplanviewHookCount > 0 && !hasCorrectPath)
+    }
+
+    /// Clean up and reinstall hook
+    /// Removes ALL CCPlanView hooks (legacy and new format) and installs fresh one
+    /// All operations are performed in a single file coordination block to prevent race conditions
+    static func cleanupAndInstallHook() throws {
+        guard let notifierPath = getNotifierPath() else {
+            throw HookManagerError.notifierNotFound
+        }
+
+        try withFileCoordination(writing: true) {
+            var settings = try readSettingsOrEmpty()
+
+            // Validate and get hooks object
+            if let existing = settings["hooks"], !(existing is [String: Any]) {
+                throw HookManagerError.unexpectedStructure
+            }
+            var hooks = settings["hooks"] as? [String: Any] ?? [:]
+
+            // Get PreToolUse array
+            if let existing = hooks["PreToolUse"], !(existing is [Any]) {
+                throw HookManagerError.unexpectedStructure
+            }
+            var preToolUse = hooks["PreToolUse"] as? [Any] ?? []
+
+            // Remove all existing CCPlanView hooks
+            let indicesToRemove = findAllCCPlanViewHookIndices(preToolUse: preToolUse)
+            for index in indicesToRemove.reversed() {
+                preToolUse.remove(at: index)
+            }
+
+            // Add fresh hook
+            let ccplanviewHook: [String: Any] = [
+                "hooks": [
+                    [
+                        "command": notifierPath,
+                        "timeout": 10,
+                        "type": "command",
+                    ] as [String: Any],
+                ],
+                "matcher": hookMatcher,
+            ]
+            preToolUse.append(ccplanviewHook)
+            hooks["PreToolUse"] = preToolUse
+            settings["hooks"] = hooks
+
+            try writeSettings(settings)
+        }
+    }
+
     /// Install the CCPlanView hook into settings.json
     /// Uses merge strategy to preserve existing settings
     /// Thread-safe via file coordination
     static func installHook() throws {
+        guard let notifierPath = getNotifierPath() else {
+            throw HookManagerError.notifierNotFound
+        }
+
         try withFileCoordination(writing: true) {
             // Skip if already installed
             if isHookConfigured() { return }
@@ -75,7 +200,7 @@ enum HookManager {
             let ccplanviewHook: [String: Any] = [
                 "hooks": [
                     [
-                        "command": hookCommand,
+                        "command": notifierPath,
                         "timeout": 10,
                         "type": "command",
                     ] as [String: Any],
@@ -132,7 +257,16 @@ enum HookManager {
 
     /// Internal helper to find CCPlanView hook index in potentially mixed PreToolUse array
     /// Skips non-dictionary entries and searches only valid hook entries
+    /// Detects both new CLI tool format and legacy bash command format
     private static func findCCPlanViewHookIndexInMixedArray(preToolUse: [Any]) -> Int? {
+        findAllCCPlanViewHookIndices(preToolUse: preToolUse).first
+    }
+
+    /// Find ALL CCPlanView hook indices in PreToolUse array
+    /// Returns indices of all hooks matching either new or legacy format
+    private static func findAllCCPlanViewHookIndices(preToolUse: [Any]) -> [Int] {
+        var indices: [Int] = []
+
         for (index, item) in preToolUse.enumerated() {
             // Skip non-dictionary entries
             guard let hookEntry = item as? [String: Any] else { continue }
@@ -144,18 +278,18 @@ enum HookManager {
                 continue
             }
 
-            // Must have command containing our identifier
+            // Must have command containing our identifier (new or legacy)
             guard let hooksList = hookEntry["hooks"] as? [[String: Any]] else { continue }
             let hasOurCommand = hooksList.contains { hook in
                 guard let command = hook["command"] as? String else { return false }
-                return command.contains(hookIdentifier)
+                return command.contains(hookIdentifier) || command.contains(legacyHookIdentifier)
             }
 
             if hasOurCommand {
-                return index
+                indices.append(index)
             }
         }
-        return nil
+        return indices
     }
 
     /// Read settings, returning nil only if file doesn't exist

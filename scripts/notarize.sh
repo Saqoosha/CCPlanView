@@ -20,8 +20,18 @@ ZIP_PATH="${WORK_DIR}/${APP_NAME}.zip"
 echo "=== Signing $APP_NAME.app ==="
 
 # Sign all nested frameworks and libraries first
-find "$APP_PATH" -type f -name "*.dylib" -o -name "*.framework" | while read -r item; do
+find "$APP_PATH" -type f \( -name "*.dylib" -o -name "*.framework" \) | while read -r item; do
   codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$item" 2>/dev/null || true
+done
+
+# Sign all executables in Contents/MacOS/ (except the main app binary which will be signed with the bundle)
+MACOS_DIR="$APP_PATH/Contents/MacOS"
+MAIN_BINARY=$(defaults read "$APP_PATH/Contents/Info.plist" CFBundleExecutable 2>/dev/null || basename "$APP_PATH" .app)
+for exe in "$MACOS_DIR"/*; do
+  if [[ -f "$exe" && -x "$exe" && "$(basename "$exe")" != "$MAIN_BINARY" ]]; then
+    echo "Signing $(basename "$exe")..."
+    codesign --force --options runtime --timestamp --sign "$DEVELOPER_ID" "$exe"
+  fi
 done
 
 # Sign the main app bundle

@@ -35,8 +35,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func checkHookSetup() {
-        guard !UserDefaults.standard.bool(forKey: Self.dontAskHookSetupKey) else { return }
         guard HookManager.isClaudeCodeInstalled() else { return }
+
+        // Check for settings validation errors
+        if let error = HookManager.validateSettings() {
+            showSettingsWarning(error)
+            return
+        }
+
+        // Check if hook needs update (cleanup)
+        if HookManager.needsHookUpdate() {
+            promptHookCleanup()
+            return
+        }
+
+        // Check if hook needs to be installed
+        guard !UserDefaults.standard.bool(forKey: Self.dontAskHookSetupKey) else { return }
         guard !HookManager.isHookConfigured() else { return }
 
         let alert = NSAlert()
@@ -60,6 +74,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             UserDefaults.standard.set(true, forKey: Self.dontAskHookSetupKey)
         default:
             break
+        }
+    }
+
+    private func showSettingsWarning(_ error: HookManagerError) {
+        let alert = NSAlert()
+        alert.messageText = "Claude Code Settings Warning"
+        alert.informativeText = error.localizedDescription
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private func promptHookCleanup() {
+        let alert = NSAlert()
+        alert.messageText = "Update Hook Configuration?"
+        alert.informativeText =
+            "CCPlanView detected outdated or duplicate hooks. Would you like to clean up and update the hook configuration?"
+        alert.addButton(withTitle: "Update")
+        alert.addButton(withTitle: "Later")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            do {
+                try HookManager.cleanupAndInstallHook()
+                NotificationCenter.default.post(name: .hookConfigurationChanged, object: nil)
+                showSuccessAlert()
+            } catch {
+                showErrorAlert(error)
+            }
         }
     }
 
