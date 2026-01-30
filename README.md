@@ -1,3 +1,5 @@
+English | [日本語](README.ja.md)
+
 # CCPlanView
 
 <p align="center">
@@ -34,9 +36,11 @@ open -a "CCPlanView" /path/to/file.md
 
 ### Use with Claude Code Hooks
 
-CCPlanView works great as a plan viewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). When Claude generates a plan file (via `ExitPlanMode`), a hook can automatically open it in CCPlanView and trigger a refresh to show the latest content with diff highlighting.
+CCPlanView works great as a plan viewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). When Claude generates a plan file (via `ExitPlanMode`), a hook automatically opens it in CCPlanView with diff highlighting.
 
-Add the following to your `~/.config/claude/settings.json`:
+**Just launch the app** — if Claude Code is installed, CCPlanView will offer to configure the hook automatically.
+
+The following hook is added to `~/.claude/settings.json`:
 
 ```json
 {
@@ -47,7 +51,7 @@ Add the following to your `~/.config/claude/settings.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "FILE=$(ls -t ~/.claude/plans/*.md | head -1) && open -a 'CCPlanView' \"$FILE\" && sleep 0.5 && open \"ccplanview://refresh?file=$FILE\"",
+            "command": "/Applications/CCPlanView.app/Contents/MacOS/notifier",
             "timeout": 10
           }
         ]
@@ -57,7 +61,7 @@ Add the following to your `~/.config/claude/settings.json`:
 }
 ```
 
-This hook triggers right before Claude presents a plan for approval. It opens the latest plan file in CCPlanView and sends a refresh command via URL scheme, highlighting any changes since the last view.
+> **Note**: The path reflects the actual app location at install time.
 
 ---
 
@@ -100,8 +104,9 @@ cd CCPlanView
 
 ```
 Sources/
-└── CCPlanView/          # Main app (SwiftUI + WKWebView)
-    └── Resources/       # HTML/CSS/JS for markdown rendering
+├── CCPlanView/          # Main app (SwiftUI + WKWebView)
+│   └── Resources/       # HTML/CSS/JS for markdown rendering
+└── notifier/            # CLI tool for Claude Code hooks
 ```
 
 ## License

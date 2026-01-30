@@ -16,10 +16,12 @@ App output: `build/DerivedData/Build/Products/{Config}/CCPlanView.app`
 ## Architecture
 
 - **CCPlanViewApp.swift** - `@main` entry with `DocumentGroup(viewing:)` for multi-window support
-- **AppDelegate.swift** - Sets up TitlebarDragView, handles URL Scheme (`ccplanview://refresh?file=...`)
+- **AppDelegate.swift** - Sets up TitlebarDragView, handles URL Scheme (`ccplanview://refresh?file=...`), manages hook setup
+- **HookManager.swift** - Manages Claude Code hook installation, cleanup, and validation
 - **MarkdownWebView.swift** - `NSViewRepresentable` wrapping WKWebView + DropContainerView/DropOverlayView for drag & drop
 - **MarkdownFileDocument.swift** - `ReferenceFileDocument` conforming document
 - **Resources/index.html** - HTML template with marked.js + highlight.js, called via `evaluateJavaScript`
+- **notifier/** - Standalone CLI tool called by Claude Code hooks to open latest plan file
 
 ## URL Scheme
 

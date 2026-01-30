@@ -136,15 +136,25 @@ MainContentView.onReceive(.ccplanviewRefresh)
 
 ### Usage with Claude Code Hooks
 
+CCPlanView automatically offers to install the hook on first launch (via `HookManager`).
+The installed hook calls the bundled `notifier` CLI:
+
 ```json
 {
-  "PreToolUse": [{
-    "matcher": "ExitPlanMode",
-    "hooks": [{
-      "command": "FILE=$(ls -t ~/.claude/plans/*.md | head -1) && open -a 'CCPlanView' \"$FILE\" && sleep 0.5 && open \"ccplanview://refresh?file=$FILE\"",
-      "type": "command"
-    }]
-  }]
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/Applications/CCPlanView.app/Contents/MacOS/notifier",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -212,7 +222,8 @@ CCPlanViewApp (@main)
   │   └─ MarkdownFileDocument (ReferenceFileDocument)
   ├─ AppDelegate (via @NSApplicationDelegateAdaptor)
   │   ├─ TitlebarDragView
-  │   └─ URL Scheme handler (ccplanview://refresh)
+  │   ├─ URL Scheme handler (ccplanview://refresh)
+  │   └─ HookManager (hook setup/cleanup on launch)
   └─ MainContentView
       ├─ .onReceive(.ccplanviewRefresh) ──▶ refreshContent()
       └─ MarkdownWebView
@@ -220,6 +231,9 @@ CCPlanViewApp (@main)
           │   └─ DropOverlayView
           └─ WKWebView + Coordinator
               └─ index.html (Resources)
+
+notifier (standalone CLI, bundled in app)
+  └─ Called by Claude Code hooks to open latest plan file
 ```
 
 No external Swift dependencies. All JS/CSS libraries are vendored in `Resources/`.
