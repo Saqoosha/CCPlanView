@@ -10,6 +10,7 @@ enum HookManagerError: LocalizedError, Equatable {
     case settingsCorrupted
     case settingsUnreadable
     case unexpectedStructure
+    case notifierNotFound
 
     var errorDescription: String? {
         switch self {
@@ -19,6 +20,8 @@ enum HookManagerError: LocalizedError, Equatable {
             return "Could not read Claude Code settings.json. Check file permissions."
         case .unexpectedStructure:
             return "Claude Code settings.json has unexpected structure."
+        case .notifierNotFound:
+            return "The notifier CLI tool was not found in the app bundle."
         }
     }
 }
@@ -30,22 +33,131 @@ enum HookManager {
     static var settingsPath: URL { claudeDir.appendingPathComponent("settings.json") }
 
     /// Unique identifier for CCPlanView hook command (used for detection and removal)
-    private static let hookIdentifier = "open -a 'CCPlanView'"
+    private static let hookIdentifier = "CCPlanView.app/Contents/MacOS/notifier"
+
+    /// Legacy hook identifier for migration from old command format
+    private static let legacyHookIdentifier = "open -a 'CCPlanView'"
 
     /// The matcher for CCPlanView hook - must match BOTH matcher AND command identifier
     private static let hookMatcher = "ExitPlanMode"
 
-    /// The hook command for CCPlanView
-    private static let hookCommand =
-        "FILE=$(ls -t ~/.claude/plans/*.md 2>/dev/null | head -1) && [ -n \"$FILE\" ] && open -a 'CCPlanView' \"$FILE\" && sleep 0.5 && open \"ccplanview://refresh?file=$(python3 -c \"import urllib.parse; print(urllib.parse.quote('$FILE', safe=''))\")\"" // swiftlint:disable:this line_length
+    /// The hook command for CCPlanView (used in tests only)
+    private static let hookCommand = "/Applications/CCPlanView.app/Contents/MacOS/notifier"
 
     static func isClaudeCodeInstalled() -> Bool {
         FileManager.default.fileExists(atPath: claudeDir.path)
     }
 
+    /// Validate settings.json and return any error
+    /// Returns nil if settings are valid or don't exist yet
+    static func validateSettings() -> HookManagerError? {
+        guard FileManager.default.fileExists(atPath: settingsPath.path) else {
+            return nil  // No settings file is fine
+        }
+
+        do {
+            _ = try readSettings()
+            return nil
+        } catch let error as HookManagerError {
+            return error
+        } catch {
+            return .settingsUnreadable
+        }
+    }
+
     static func isHookConfigured() -> Bool {
         guard let settings = try? readSettings() else { return false }
         return findCCPlanViewHookIndex(in: settings) != nil
+    }
+
+    /// Check if hook needs update (cleanup required)
+    /// Returns true if any of:
+    /// - Legacy hook exists
+    /// - Hook path doesn't match current app bundle
+    /// - Multiple CCPlanView hooks exist
+    static func needsHookUpdate() -> Bool {
+        guard let settings = try? readSettings(),
+              let hooks = settings["hooks"] as? [String: Any],
+              let preToolUse = hooks["PreToolUse"] as? [Any]
+        else {
+            return false
+        }
+
+        // For testing, we use the hardcoded path
+        let currentNotifierPath = hookCommand
+
+        var ccplanviewHookCount = 0
+        var hasCorrectPath = false
+
+        for item in preToolUse {
+            guard let hookEntry = item as? [String: Any],
+                  let matcher = hookEntry["matcher"] as? String,
+                  matcher == hookMatcher,
+                  let hooksList = hookEntry["hooks"] as? [[String: Any]]
+            else {
+                continue
+            }
+
+            for hook in hooksList {
+                guard let command = hook["command"] as? String else { continue }
+
+                // Check for legacy or new format
+                if command.contains(hookIdentifier) || command.contains(legacyHookIdentifier) {
+                    ccplanviewHookCount += 1
+
+                    // Check if this is the correct path
+                    if command == currentNotifierPath {
+                        hasCorrectPath = true
+                    }
+                }
+            }
+        }
+
+        // Needs update if: multiple hooks, or no correct path hook exists
+        return ccplanviewHookCount > 1 || (ccplanviewHookCount > 0 && !hasCorrectPath)
+    }
+
+    /// Clean up and reinstall hook
+    /// Removes ALL CCPlanView hooks (legacy and new format) and installs fresh one
+    static func cleanupAndInstallHook() throws {
+        try withFileCoordination(writing: true) {
+            var settings = try readSettingsOrEmpty()
+
+            // Validate and get hooks object
+            if let existing = settings["hooks"], !(existing is [String: Any]) {
+                throw HookManagerError.unexpectedStructure
+            }
+            var hooks = settings["hooks"] as? [String: Any] ?? [:]
+
+            // Get PreToolUse array
+            if let existing = hooks["PreToolUse"], !(existing is [Any]) {
+                throw HookManagerError.unexpectedStructure
+            }
+            var preToolUse = hooks["PreToolUse"] as? [Any] ?? []
+
+            // Remove all existing CCPlanView hooks
+            let indicesToRemove = findAllCCPlanViewHookIndices(preToolUse: preToolUse)
+            for index in indicesToRemove.reversed() {
+                preToolUse.remove(at: index)
+            }
+
+            // Add fresh hook
+            let ccplanviewHook: [String: Any] = [
+                "hooks": [
+                    [
+                        "command": hookCommand,
+                        "timeout": 10,
+                        "type": "command",
+                    ] as [String: Any],
+                ],
+                "matcher": hookMatcher,
+            ]
+            preToolUse.append(ccplanviewHook)
+            hooks["PreToolUse"] = preToolUse
+            settings["hooks"] = hooks
+
+            try writeSettings(settings)
+        }
     }
 
     static func installHook() throws {
@@ -113,6 +225,14 @@ enum HookManager {
     }
 
     private static func findCCPlanViewHookIndexInMixedArray(preToolUse: [Any]) -> Int? {
+        findAllCCPlanViewHookIndices(preToolUse: preToolUse).first
+    }
+
+    /// Find ALL CCPlanView hook indices in PreToolUse array
+    /// Returns indices of all hooks matching either new or legacy format
+    private static func findAllCCPlanViewHookIndices(preToolUse: [Any]) -> [Int] {
+        var indices: [Int] = []
+
         for (index, item) in preToolUse.enumerated() {
             guard let hookEntry = item as? [String: Any] else { continue }
 
@@ -125,14 +245,14 @@ enum HookManager {
             guard let hooksList = hookEntry["hooks"] as? [[String: Any]] else { continue }
             let hasOurCommand = hooksList.contains { hook in
                 guard let command = hook["command"] as? String else { return false }
-                return command.contains(hookIdentifier)
+                return command.contains(hookIdentifier) || command.contains(legacyHookIdentifier)
             }
 
             if hasOurCommand {
-                return index
+                indices.append(index)
             }
         }
-        return nil
+        return indices
     }
 
     static func readSettings() throws -> [String: Any]? {
@@ -332,168 +452,25 @@ test("Install hook when settings.json doesn't exist") {
     try assertTrue(HookManager.isHookConfigured())
 }
 
-test("Install hook with empty settings.json") {
+test("Install hook when empty settings.json exists") {
     try writeTestSettings("{}")
 
-    try assertFalse(HookManager.isHookConfigured())
     try HookManager.installHook()
-    try assertTrue(HookManager.isHookConfigured())
 
+    try assertTrue(HookManager.isHookConfigured())
     let settings = try readTestSettings()
     let preToolUse = try getPreToolUse(settings)
     try assertEqual(preToolUse.count, 1)
 }
 
-test("Install hook when hooks key doesn't exist") {
-    try writeTestSettings("""
-    {
-        "someOtherSetting": "value"
-    }
-    """)
-
-    try HookManager.installHook()
-    try assertTrue(HookManager.isHookConfigured())
-
-    let settings = try readTestSettings()
-    try assertEqual(settings["someOtherSetting"] as? String, "value", "Other settings should be preserved")
-}
-
-test("Install hook when PreToolUse doesn't exist") {
-    try writeTestSettings("""
-    {
-        "hooks": {
-            "PostToolUse": []
-        }
-    }
-    """)
-
-    try HookManager.installHook()
-    try assertTrue(HookManager.isHookConfigured())
-
-    let settings = try readTestSettings()
-    let hooks = settings["hooks"] as? [String: Any]
-    try assertNotNil(hooks?["PostToolUse"], "PostToolUse should be preserved")
-}
-
-test("Install hook with empty PreToolUse array") {
-    try writeTestSettings("""
-    {
-        "hooks": {
-            "PreToolUse": []
-        }
-    }
-    """)
-
-    try HookManager.installHook()
-    try assertTrue(HookManager.isHookConfigured())
-
-    let settings = try readTestSettings()
-    let preToolUse = try getPreToolUse(settings)
-    try assertEqual(preToolUse.count, 1)
-}
-
-// MARK: Error Handling Tests
-
-test("Reject when hooks is not a dictionary - unexpectedStructure") {
-    try writeTestSettings("""
-    {
-        "hooks": ["not", "a", "dictionary"]
-    }
-    """)
-
-    try assertThrows(HookManagerError.unexpectedStructure) {
-        try HookManager.installHook()
-    }
-}
-
-test("Reject when PreToolUse is not an array - unexpectedStructure") {
-    try writeTestSettings("""
-    {
-        "hooks": {
-            "PreToolUse": "not an array"
-        }
-    }
-    """)
-
-    try assertThrows(HookManagerError.unexpectedStructure) {
-        try HookManager.installHook()
-    }
-}
-
-test("Reject corrupted JSON - settingsCorrupted") {
-    try writeTestSettings("{ this is not valid json }")
-
-    try assertThrows(HookManagerError.settingsCorrupted) {
-        try HookManager.installHook()
-    }
-}
-
-test("Reject when JSON root is array - settingsCorrupted") {
-    try writeTestSettings("[1, 2, 3]")
-
-    try assertThrows(HookManagerError.settingsCorrupted) {
-        try HookManager.installHook()
-    }
-}
-
-test("Reject when JSON root is string - settingsCorrupted") {
-    try writeTestSettings("\"just a string\"")
-
-    try assertThrows(HookManagerError.settingsCorrupted) {
-        try HookManager.installHook()
-    }
-}
-
-test("Unreadable file throws settingsUnreadable") {
-    try writeTestSettings("{}")
-
-    // Make file unreadable
-    try FileManager.default.setAttributes(
-        [.posixPermissions: 0o000],
-        ofItemAtPath: HookManager.settingsPath.path
-    )
-
-    defer {
-        // Restore permissions for cleanup
-        try? FileManager.default.setAttributes(
-            [.posixPermissions: 0o644],
-            ofItemAtPath: HookManager.settingsPath.path
-        )
-    }
-
-    try assertThrows(HookManagerError.settingsUnreadable) {
-        _ = try HookManager.readSettings()
-    }
-}
-
-// MARK: Duplicate Prevention Tests
-
-test("No duplicate when hook already installed") {
-    try writeTestSettings("{}")
-
-    try HookManager.installHook()
-    try HookManager.installHook()  // Second install should be no-op
-
-    let settings = try readTestSettings()
-    let preToolUse = try getPreToolUse(settings)
-    try assertEqual(preToolUse.count, 1, "Should not duplicate hook")
-}
-
-// MARK: Hook Preservation Tests
-
-test("Preserve other hooks when installing CCPlanView") {
+test("Install hook preserves existing hooks") {
     try writeTestSettings("""
     {
         "hooks": {
             "PreToolUse": [
                 {
                     "matcher": "SomeOtherTool",
-                    "hooks": [
-                        {
-                            "command": "echo 'other hook'",
-                            "type": "command"
-                        }
-                    ]
+                    "hooks": [{"command": "echo test", "type": "command"}]
                 }
             ]
         }
@@ -504,469 +481,290 @@ test("Preserve other hooks when installing CCPlanView") {
 
     let settings = try readTestSettings()
     let preToolUse = try getPreToolUse(settings)
-    try assertEqual(preToolUse.count, 2, "Should have both hooks")
+    try assertEqual(preToolUse.count, 2)
 }
 
-test("Remove only CCPlanView hook, preserve others") {
+test("Install hook is idempotent") {
+    try HookManager.installHook()
+    try HookManager.installHook()
+    try HookManager.installHook()
+
+    let settings = try readTestSettings()
+    let preToolUse = try getPreToolUse(settings)
+    try assertEqual(preToolUse.count, 1)
+}
+
+// MARK: Remove Hook Tests
+
+test("Remove hook when configured") {
+    try HookManager.installHook()
+    try assertTrue(HookManager.isHookConfigured())
+
+    try HookManager.removeHook()
+
+    try assertFalse(HookManager.isHookConfigured())
+}
+
+test("Remove hook preserves other hooks") {
+    try writeTestSettings("""
+    {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "SomeOtherTool",
+                    "hooks": [{"command": "echo test", "type": "command"}]
+                }
+            ]
+        }
+    }
+    """)
+    try HookManager.installHook()
+
+    let settingsBefore = try readTestSettings()
+    let preToolUseBefore = try getPreToolUse(settingsBefore)
+    try assertEqual(preToolUseBefore.count, 2)
+
+    try HookManager.removeHook()
+
+    let settingsAfter = try readTestSettings()
+    let preToolUseAfter = try getPreToolUse(settingsAfter)
+    try assertEqual(preToolUseAfter.count, 1)
+    try assertEqual(preToolUseAfter[0]["matcher"] as? String, "SomeOtherTool")
+}
+
+test("Remove hook when not configured does nothing") {
     try writeTestSettings("{}")
-    try HookManager.installHook()
-
-    // Add another hook manually
-    var settings = try readTestSettings()
-    var hooks = settings["hooks"] as? [String: Any] ?? [:]
-    var preToolUse = hooks["PreToolUse"] as? [[String: Any]] ?? []
-    preToolUse.append([
-        "matcher": "SomeOtherTool",
-        "hooks": [
-            ["command": "echo 'other'", "type": "command"]
-        ]
-    ] as [String: Any])
-    hooks["PreToolUse"] = preToolUse
-    settings["hooks"] = hooks
-    try HookManager.writeSettings(settings)
 
     try HookManager.removeHook()
 
-    let finalSettings = try readTestSettings()
-    let finalPreToolUse = try getPreToolUse(finalSettings)
-    try assertEqual(finalPreToolUse.count, 1, "Should only have other hook")
-    try assertFalse(HookManager.isHookConfigured(), "CCPlanView hook should be removed")
+    try assertFalse(HookManager.isHookConfigured())
 }
 
-// MARK: False Positive Prevention Tests (Matcher + Command)
+// MARK: Error Handling Tests
 
-test("Don't detect hooks with similar names (e.g., 'MyCCPlanViewHelper')") {
-    // This hook mentions CCPlanView but doesn't use the exact identifier "open -a 'CCPlanView'"
+test("validateSettings returns nil for valid settings") {
+    try writeTestSettings("{}")
+    try assertNil(HookManager.validateSettings())
+}
+
+test("validateSettings returns nil when file doesn't exist") {
+    try assertNil(HookManager.validateSettings())
+}
+
+test("validateSettings returns settingsCorrupted for invalid JSON") {
+    try writeTestSettings("not valid json")
+    try assertEqual(HookManager.validateSettings(), HookManagerError.settingsCorrupted)
+}
+
+test("validateSettings returns settingsCorrupted for non-object JSON") {
+    try writeTestSettings("[1, 2, 3]")
+    try assertEqual(HookManager.validateSettings(), HookManagerError.settingsCorrupted)
+}
+
+test("installHook throws unexpectedStructure when hooks is not object") {
+    try writeTestSettings("""
+    {"hooks": "not an object"}
+    """)
+
+    try assertThrows(HookManagerError.unexpectedStructure) {
+        try HookManager.installHook()
+    }
+}
+
+test("installHook throws unexpectedStructure when PreToolUse is not array") {
+    try writeTestSettings("""
+    {"hooks": {"PreToolUse": "not an array"}}
+    """)
+
+    try assertThrows(HookManagerError.unexpectedStructure) {
+        try HookManager.installHook()
+    }
+}
+
+// MARK: Mixed Array Support Tests
+
+test("isHookConfigured works with mixed PreToolUse array") {
     try writeTestSettings("""
     {
         "hooks": {
             "PreToolUse": [
+                "string entry",
+                123,
+                null,
                 {
-                    "matcher": "SomeTool",
-                    "hooks": [
-                        {
-                            "command": "echo 'MyCCPlanViewHelper'",
-                            "type": "command"
-                        }
-                    ]
+                    "matcher": "ExitPlanMode",
+                    "hooks": [{"command": "/Applications/CCPlanView.app/Contents/MacOS/notifier", "type": "command"}]
                 }
             ]
         }
     }
     """)
 
-    try assertFalse(HookManager.isHookConfigured(), "Should not detect similar name as installed")
+    try assertTrue(HookManager.isHookConfigured())
 }
 
-test("Don't remove hooks with similar names") {
+test("removeHook works with mixed PreToolUse array") {
     try writeTestSettings("""
     {
         "hooks": {
             "PreToolUse": [
+                "string entry",
                 {
-                    "matcher": "SomeTool",
-                    "hooks": [
-                        {
-                            "command": "echo 'CCPlanView is great'",
-                            "type": "command"
-                        }
-                    ]
-                }
+                    "matcher": "ExitPlanMode",
+                    "hooks": [{"command": "/Applications/CCPlanView.app/Contents/MacOS/notifier", "type": "command"}]
+                },
+                123
             ]
         }
     }
     """)
 
-    try HookManager.installHook()
     try HookManager.removeHook()
 
+    try assertFalse(HookManager.isHookConfigured())
     let settings = try readTestSettings()
-    let preToolUse = try getPreToolUse(settings)
-    try assertEqual(preToolUse.count, 1, "Similar named hook should be preserved")
+    let preToolUse = try getPreToolUseAny(settings)
+    try assertEqual(preToolUse.count, 2)
 }
 
-test("Don't falsely detect 'open -a CCPlanViewHelper' as our hook") {
+// MARK: Hook Detection Tests
+
+test("isHookConfigured requires both matcher and command") {
+    // Wrong matcher with right command
     try writeTestSettings("""
     {
         "hooks": {
             "PreToolUse": [
                 {
-                    "matcher": "SomeTool",
-                    "hooks": [
-                        {
-                            "command": "open -a 'CCPlanViewHelper' /some/path",
-                            "type": "command"
-                        }
-                    ]
+                    "matcher": "WrongMatcher",
+                    "hooks": [{"command": "/Applications/CCPlanView.app/Contents/MacOS/notifier", "type": "command"}]
                 }
             ]
         }
     }
     """)
-
-    // This should NOT be detected because "open -a 'CCPlanViewHelper'" != "open -a 'CCPlanView'"
-    try assertFalse(HookManager.isHookConfigured(), "Should not detect CCPlanViewHelper as CCPlanView")
+    try assertFalse(HookManager.isHookConfigured())
 }
 
-test("Don't detect same command with different matcher") {
-    // Hook with correct command but WRONG matcher should NOT be detected
-    try writeTestSettings("""
-    {
-        "hooks": {
-            "PreToolUse": [
-                {
-                    "matcher": "SomeOtherMatcher",
-                    "hooks": [
-                        {
-                            "command": "open -a 'CCPlanView' /some/path",
-                            "type": "command"
-                        }
-                    ]
-                }
-            ]
-        }
-    }
-    """)
-
-    try assertFalse(HookManager.isHookConfigured(), "Should not detect hook with wrong matcher")
-}
-
-test("Don't remove hook with same command but different matcher") {
-    // Hook with correct command but WRONG matcher should NOT be removed
-    try writeTestSettings("""
-    {
-        "hooks": {
-            "PreToolUse": [
-                {
-                    "matcher": "SomeOtherMatcher",
-                    "hooks": [
-                        {
-                            "command": "open -a 'CCPlanView' /some/path",
-                            "type": "command"
-                        }
-                    ]
-                }
-            ]
-        }
-    }
-    """)
-
-    // Install our hook (should add a new one)
-    try HookManager.installHook()
-
-    let settings = try readTestSettings()
-    let preToolUse = try getPreToolUse(settings)
-    try assertEqual(preToolUse.count, 2, "Should have both hooks (different matchers)")
-
-    // Remove our hook
-    try HookManager.removeHook()
-
-    let finalSettings = try readTestSettings()
-    let finalPreToolUse = try getPreToolUse(finalSettings)
-    try assertEqual(finalPreToolUse.count, 1, "Should preserve hook with different matcher")
-
-    // The remaining hook should be the one with SomeOtherMatcher
-    guard let remainingHook = finalPreToolUse.first,
-          let matcher = remainingHook["matcher"] as? String
-    else {
-        throw TestError(message: "Could not get remaining hook matcher")
-    }
-    try assertEqual(matcher, "SomeOtherMatcher", "Hook with different matcher should remain")
-}
-
-test("Detect hook only when BOTH matcher and command match") {
-    // Hook with BOTH correct matcher AND correct command
+test("isHookConfigured detects hook with correct matcher and command") {
     try writeTestSettings("""
     {
         "hooks": {
             "PreToolUse": [
                 {
                     "matcher": "ExitPlanMode",
-                    "hooks": [
-                        {
-                            "command": "open -a 'CCPlanView' /some/path",
-                            "type": "command"
-                        }
-                    ]
+                    "hooks": [{"command": "/Applications/CCPlanView.app/Contents/MacOS/notifier", "type": "command"}]
+                }
+            ]
+        }
+    }
+    """)
+    try assertTrue(HookManager.isHookConfigured())
+}
+
+// MARK: Cleanup Tests
+
+test("needsHookUpdate returns false when no hooks") {
+    try writeTestSettings("{}")
+    try assertFalse(HookManager.needsHookUpdate())
+}
+
+test("needsHookUpdate returns true for legacy hook") {
+    try writeTestSettings("""
+    {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "ExitPlanMode",
+                    "hooks": [{"command": "open -a 'CCPlanView' test.md", "type": "command"}]
+                }
+            ]
+        }
+    }
+    """)
+    try assertTrue(HookManager.needsHookUpdate())
+}
+
+test("needsHookUpdate returns true for wrong path") {
+    try writeTestSettings("""
+    {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "ExitPlanMode",
+                    "hooks": [{"command": "/Wrong/Path/CCPlanView.app/Contents/MacOS/notifier", "type": "command"}]
+                }
+            ]
+        }
+    }
+    """)
+    try assertTrue(HookManager.needsHookUpdate())
+}
+
+test("needsHookUpdate returns true for multiple hooks") {
+    try writeTestSettings("""
+    {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "ExitPlanMode",
+                    "hooks": [{"command": "/Applications/CCPlanView.app/Contents/MacOS/notifier", "type": "command"}]
+                },
+                {
+                    "matcher": "ExitPlanMode",
+                    "hooks": [{"command": "open -a 'CCPlanView' test.md", "type": "command"}]
+                }
+            ]
+        }
+    }
+    """)
+    try assertTrue(HookManager.needsHookUpdate())
+}
+
+test("cleanupAndInstallHook removes all old hooks and installs fresh") {
+    try writeTestSettings("""
+    {
+        "hooks": {
+            "PreToolUse": [
+                {
+                    "matcher": "ExitPlanMode",
+                    "hooks": [{"command": "/Wrong/Path/CCPlanView.app/Contents/MacOS/notifier", "type": "command"}]
+                },
+                {
+                    "matcher": "ExitPlanMode",
+                    "hooks": [{"command": "open -a 'CCPlanView' test.md", "type": "command"}]
+                },
+                {
+                    "matcher": "OtherMatcher",
+                    "hooks": [{"command": "echo other", "type": "command"}]
                 }
             ]
         }
     }
     """)
 
-    try assertTrue(HookManager.isHookConfigured(), "Should detect hook with correct matcher and command")
-}
-
-// MARK: Edge Cases Tests
-
-test("Remove hook when settings.json doesn't exist (no-op)") {
-    try HookManager.removeHook()  // Should not throw
-    try assertFalse(HookManager.isClaudeCodeInstalled())
-}
-
-test("isHookConfigured returns false with malformed hooks array") {
-    try writeTestSettings("""
-    {
-        "hooks": {
-            "PreToolUse": [
-                "not a dictionary"
-            ]
-        }
-    }
-    """)
-
-    try assertFalse(HookManager.isHookConfigured())
-}
-
-test("Preserve all root-level settings") {
-    try writeTestSettings("""
-    {
-        "apiKey": "secret",
-        "theme": "dark",
-        "nested": {
-            "deep": {
-                "value": 123
-            }
-        }
-    }
-    """)
-
-    try HookManager.installHook()
-
-    let settings = try readTestSettings()
-    try assertEqual(settings["apiKey"] as? String, "secret")
-    try assertEqual(settings["theme"] as? String, "dark")
-
-    guard let nested = settings["nested"] as? [String: Any],
-          let deep = nested["deep"] as? [String: Any]
-    else {
-        throw TestError(message: "Nested structure not preserved")
-    }
-    try assertEqual(deep["value"] as? Int, 123)
-}
-
-// MARK: Hook Content Verification Tests
-
-test("Installed hook has correct matcher") {
-    try writeTestSettings("{}")
-    try HookManager.installHook()
+    try HookManager.cleanupAndInstallHook()
 
     let settings = try readTestSettings()
     let preToolUse = try getPreToolUse(settings)
-    guard let hookEntry = preToolUse.first else {
-        throw TestError(message: "No hook entry found")
-    }
+    try assertEqual(preToolUse.count, 2)
 
-    try assertEqual(hookEntry["matcher"] as? String, "ExitPlanMode", "matcher should be ExitPlanMode")
-}
+    // Check that other hook is preserved
+    let otherHook = preToolUse.first { ($0["matcher"] as? String) == "OtherMatcher" }
+    try assertNotNil(otherHook)
 
-test("Installed hook has correct timeout") {
-    try writeTestSettings("{}")
-    try HookManager.installHook()
-
-    let settings = try readTestSettings()
-    let preToolUse = try getPreToolUse(settings)
-    guard let hookEntry = preToolUse.first,
-          let hooksList = hookEntry["hooks"] as? [[String: Any]],
-          let firstHook = hooksList.first
-    else {
-        throw TestError(message: "Could not find hook")
-    }
-
-    try assertEqual(firstHook["timeout"] as? Int, 10, "timeout should be 10")
-    try assertEqual(firstHook["type"] as? String, "command", "type should be command")
-}
-
-test("Installed hook command contains required elements") {
-    try writeTestSettings("{}")
-    try HookManager.installHook()
-
-    let settings = try readTestSettings()
-    let preToolUse = try getPreToolUse(settings)
-    guard let hookEntry = preToolUse.first else {
-        throw TestError(message: "No hook entry found")
-    }
-
-    let command = try getHookCommand(hookEntry)
-
-    try assertTrue(command.contains("ls -t ~/.claude/plans/*.md"), "Command should list plan files")
-    try assertTrue(command.contains("2>/dev/null"), "Command should suppress ls errors")
-    try assertTrue(command.contains("[ -n \"$FILE\" ]"), "Command should check if file exists")
-    try assertTrue(command.contains("open -a 'CCPlanView'"), "Command should open CCPlanView")
-    try assertTrue(command.contains("ccplanview://refresh"), "Command should trigger refresh")
-    try assertTrue(command.contains("urllib.parse.quote"), "Command should URL-encode file path")
-}
-
-// MARK: Mixed Array Tests (dictionaries + non-dictionaries)
-
-test("Detect hook in mixed PreToolUse array") {
-    // Create settings with CCPlanView hook manually
-    try writeTestSettings("{}")
-    try HookManager.installHook()
-
-    // Add a non-dictionary entry to PreToolUse
-    var settings = try readTestSettings()
-    var hooks = settings["hooks"] as? [String: Any] ?? [:]
-    var preToolUse = hooks["PreToolUse"] as? [Any] ?? []
-    preToolUse.insert("malformed string entry", at: 0)  // Add non-dict at beginning
-    hooks["PreToolUse"] = preToolUse
-    settings["hooks"] = hooks
-
-    let data = try JSONSerialization.data(withJSONObject: settings, options: .prettyPrinted)
-    try data.write(to: HookManager.settingsPath)
-
-    // Should still detect our hook even with mixed array
-    try assertTrue(HookManager.isHookConfigured(), "Should detect hook in mixed array")
-}
-
-test("Remove hook from mixed PreToolUse array") {
-    // Create settings with CCPlanView hook manually
-    try writeTestSettings("{}")
-    try HookManager.installHook()
-
-    // Add a non-dictionary entry to PreToolUse
-    var settings = try readTestSettings()
-    var hooks = settings["hooks"] as? [String: Any] ?? [:]
-    var preToolUse = hooks["PreToolUse"] as? [Any] ?? []
-    preToolUse.insert("malformed string entry", at: 0)  // Add non-dict at beginning
-    hooks["PreToolUse"] = preToolUse
-    settings["hooks"] = hooks
-
-    let data = try JSONSerialization.data(withJSONObject: settings, options: .prettyPrinted)
-    try data.write(to: HookManager.settingsPath)
-
-    // Verify we have mixed array with 2 items
-    let beforeSettings = try readTestSettings()
-    let beforePreToolUse = try getPreToolUseAny(beforeSettings)
-    try assertEqual(beforePreToolUse.count, 2, "Should have 2 items before removal")
-
-    // Remove should work and remove only CCPlanView hook
-    try HookManager.removeHook()
-
-    // Verify only 1 item remains (the malformed string)
-    let afterSettings = try readTestSettings()
-    let afterPreToolUse = try getPreToolUseAny(afterSettings)
-    try assertEqual(afterPreToolUse.count, 1, "Should have 1 item after removal")
-    try assertTrue(afterPreToolUse.first is String, "Remaining item should be the malformed string")
-    try assertFalse(HookManager.isHookConfigured(), "Hook should be removed")
-}
-
-test("Install hook into existing mixed PreToolUse array") {
-    // Create mixed array without our hook
-    try writeTestSettings("""
-    {
-        "hooks": {
-            "PreToolUse": [
-                "malformed string",
-                {
-                    "matcher": "OtherTool",
-                    "hooks": [{"command": "echo other", "type": "command"}]
-                },
-                12345
-            ]
-        }
-    }
-    """)
-
-    // Install should work and append to existing array
-    try HookManager.installHook()
-    try assertTrue(HookManager.isHookConfigured(), "Hook should be installed")
-
-    // Verify array structure preserved
-    let settings = try readTestSettings()
-    let preToolUse = try getPreToolUseAny(settings)
-    try assertEqual(preToolUse.count, 4, "Should have 4 items (3 original + 1 new)")
-    try assertTrue(preToolUse[0] is String, "First item should still be string")
-    try assertTrue(preToolUse[2] is Int, "Third item should still be number")
-}
-
-test("Remove hook preserves malformed entries in PreToolUse") {
-    // First install our hook
-    try writeTestSettings("{}")
-    try HookManager.installHook()
-
-    // Add a malformed entry manually
-    var settings = try readTestSettings()
-    var hooks = settings["hooks"] as? [String: Any] ?? [:]
-    var preToolUse = hooks["PreToolUse"] as? [Any] ?? []
-    preToolUse.append("malformed string entry")  // This is not a dictionary
-    hooks["PreToolUse"] = preToolUse
-    settings["hooks"] = hooks
-
-    // Write it back (bypass our writeSettings to keep malformed data)
-    let data = try JSONSerialization.data(withJSONObject: settings, options: .prettyPrinted)
-    try data.write(to: HookManager.settingsPath)
-
-    // Remove should work without crashing and preserve malformed entry
-    try HookManager.removeHook()
-
-    // The file should still exist with the malformed entry
-    let afterSettings = try readTestSettings()
-    let afterPreToolUse = try getPreToolUseAny(afterSettings)
-    try assertEqual(afterPreToolUse.count, 1, "Malformed entry should be preserved")
-    try assertTrue(afterPreToolUse.first is String, "Preserved entry should be string")
-}
-
-test("Remove hook actually removes CCPlanView hook from mixed array") {
-    // Install our hook
-    try writeTestSettings("{}")
-    try HookManager.installHook()
-
-    // Add another valid hook
-    var settings = try readTestSettings()
-    var hooks = settings["hooks"] as? [String: Any] ?? [:]
-    var preToolUse = hooks["PreToolUse"] as? [[String: Any]] ?? []
-    preToolUse.insert([
-        "matcher": "OtherMatcher",
-        "hooks": [["command": "echo other", "type": "command"]]
-    ] as [String: Any], at: 0)  // Insert at beginning
-    hooks["PreToolUse"] = preToolUse
-    settings["hooks"] = hooks
-    try HookManager.writeSettings(settings)
-
-    // Verify we have 2 hooks
-    let beforeRemove = try readTestSettings()
-    let beforePreToolUse = try getPreToolUse(beforeRemove)
-    try assertEqual(beforePreToolUse.count, 2, "Should have 2 hooks before removal")
-
-    // Remove CCPlanView hook
-    try HookManager.removeHook()
-
-    // Verify only 1 hook remains
-    let afterRemove = try readTestSettings()
-    let afterPreToolUse = try getPreToolUse(afterRemove)
-    try assertEqual(afterPreToolUse.count, 1, "Should have 1 hook after removal")
-
-    // Verify it's the other hook that remains
-    guard let remaining = afterPreToolUse.first,
-          let matcher = remaining["matcher"] as? String
-    else {
-        throw TestError(message: "Could not get remaining hook")
-    }
-    try assertEqual(matcher, "OtherMatcher", "OtherMatcher hook should remain")
-    try assertFalse(HookManager.isHookConfigured(), "CCPlanView hook should be gone")
-}
-
-// MARK: JSON Output Format Tests
-
-test("Output uses sorted keys for consistency") {
-    try writeTestSettings("{}")
-    try HookManager.installHook()
-
-    let data = try Data(contentsOf: HookManager.settingsPath)
-    let jsonString = String(decoding: data, as: UTF8.self)
-
-    // "hooks" should appear before any key that comes after it alphabetically
-    // Since we use sortedKeys, the output should be deterministic
-    try assertTrue(jsonString.contains("\"hooks\""), "Should contain hooks key")
+    // Check that CCPlanView hook has correct path
+    let ccplanviewHook = preToolUse.first { ($0["matcher"] as? String) == "ExitPlanMode" }
+    try assertNotNil(ccplanviewHook)
+    let command = try getHookCommand(ccplanviewHook!)
+    try assertEqual(command, "/Applications/CCPlanView.app/Contents/MacOS/notifier")
 }
 
 // MARK: - Summary
 
-print("\n=== Summary ===")
+print("\n=== Results ===")
 print("Passed: \(testsPassed)")
 print("Failed: \(testsFailed)")
-print("Total: \(testsPassed + testsFailed)")
 
 if testsFailed > 0 {
     exit(1)

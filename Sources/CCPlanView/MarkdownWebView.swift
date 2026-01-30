@@ -1,6 +1,9 @@
 import Foundation
+import os
 import SwiftUI
 import WebKit
+
+private let logger = Logger(subsystem: "sh.saqoo.ccplanview", category: "MarkdownWebView")
 
 struct MarkdownWebView: NSViewRepresentable {
     let markdown: String
@@ -188,7 +191,11 @@ struct MarkdownWebView: NSViewRepresentable {
                 NSDocumentController.shared.openDocument(
                     withContentsOf: url,
                     display: true
-                ) { _, _, _ in }
+                ) { _, _, error in
+                    if let error = error {
+                        logger.error("Failed to open document \(url.path): \(error.localizedDescription)")
+                    }
+                }
             } else {
                 // Non-markdown → open with default app
                 NSWorkspace.shared.open(url)
