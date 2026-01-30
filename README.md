@@ -3,25 +3,27 @@
 <p align="center">
   <img src="images/appicon.png" width="128" height="128" alt="CCPlanView icon">
   <br>
-  Lightweight macOS markdown viewer for Claude Code plans.
+  A lightweight macOS markdown viewer for Claude Code plans.
 </p>
 
 ## Features
 
-- Render `.md` files with GitHub-flavored markdown styling
-- Code syntax highlighting (highlight.js)
-- Diff visualization (green for added, red for deleted)
-- Dark/light mode auto-switch
-- URL scheme for on-demand refresh (`ccplanview://refresh?file=...`)
-- Open files via File > Open, drag & drop, or Finder "Open With"
+- **GitHub-Flavored Markdown** - Render `.md` files with beautiful GitHub-style formatting
+- **Syntax Highlighting** - Code blocks with highlight.js support for all major languages
+- **Diff Visualization** - Green for added lines, red for deleted lines
+- **Dark/Light Mode** - Automatically switches based on system appearance
+- **URL Scheme Refresh** - Trigger on-demand refresh via `ccplanview://refresh?file=...`
+- **Multiple Open Methods** - File > Open, drag & drop, Finder "Open With", or terminal command
 
 ## Installation
 
-1. Go to [Releases](https://github.com/Saqoosha/CCPlanView/releases)
-2. Download the latest `.dmg` file
-3. Open the `.dmg` and drag **CCPlanView** to `/Applications`
+1. Download the latest `.dmg` from [Releases](https://github.com/Saqoosha/CCPlanView/releases)
+2. Open the DMG and drag `CCPlanView.app` to Applications
+3. Launch the app and open a markdown file
 
 ## Usage
+
+### Opening Files
 
 ```bash
 # Open a file from terminal
@@ -57,21 +59,34 @@ Add the following to your `~/.config/claude/settings.json`:
 
 This hook triggers right before Claude presents a plan for approval. It opens the latest plan file in CCPlanView and sends a refresh command via URL scheme, highlighting any changes since the last view.
 
+---
+
 ## Development
 
-### Build
+### Requirements
 
-Requires macOS 14.0+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
+- macOS 14.0+
+- Xcode 16.0+
+- [XcodeGen](https://github.com/yonaskolb/XcodeGen)
+
+### Build from Source
+
+```bash
+git clone https://github.com/Saqoosha/CCPlanView.git
+cd CCPlanView
+./scripts/build.sh Release
+
+# The app is located at:
+# build/DerivedData/Build/Products/Release/CCPlanView.app
+```
+
+### Build Commands
 
 ```bash
 ./scripts/build.sh          # Debug build
 ./scripts/build.sh Release  # Release build
-```
-
-### Release
-
-```bash
-./scripts/release.sh 1.0.0
+./scripts/package_dmg.sh    # Package DMG (includes notarization)
+./scripts/release.sh 1.0.0  # Release new version
 ```
 
 ### Tech Stack
@@ -80,6 +95,14 @@ Requires macOS 14.0+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen).
 - [marked.js](https://github.com/markedjs/marked) (markdown parsing)
 - [highlight.js](https://highlightjs.org/) (syntax highlighting)
 - [github-markdown-css](https://github.com/sindresorhus/github-markdown-css) (styling)
+
+### Project Structure
+
+```
+Sources/
+└── CCPlanView/          # Main app (SwiftUI + WKWebView)
+    └── Resources/       # HTML/CSS/JS for markdown rendering
+```
 
 ## License
 
