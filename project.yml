@@ -21,6 +21,12 @@ targets:
       - path: Sources/CCPlanView
         excludes:
           - "**/.DS_Store"
+    dependencies:
+      - target: ccplanview-notify
+        embed: true
+        codeSign: true
+        copy:
+          destination: executables
     settings:
       PRODUCT_BUNDLE_IDENTIFIER: sh.saqoo.ccplanview
       PRODUCT_NAME: "CCPlanView"
@@ -74,3 +80,16 @@ targets:
                 - markdown
                 - mdown
                 - mkd
+
+  ccplanview-notify:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Sources/ccplanview-notify
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      PRODUCT_NAME: "ccplanview-notify"
+      CODE_SIGN_STYLE: Automatic
+      DEVELOPMENT_TEAM: G5G54TCH8W
+      ENABLE_HARDENED_RUNTIME: YES

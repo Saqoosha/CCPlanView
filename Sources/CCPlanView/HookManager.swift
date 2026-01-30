@@ -24,16 +24,18 @@ enum HookManager {
     static var settingsPath: URL { claudeDir.appendingPathComponent("settings.json") }
 
     /// Unique identifier for CCPlanView hook command (used for detection and removal)
-    private static let hookIdentifier = "open -a 'CCPlanView'"
+    private static let hookIdentifier = "ccplanview-notify"
+
+    /// Legacy hook identifier for migration from old command format
+    private static let legacyHookIdentifier = "open -a 'CCPlanView'"
 
     /// The matcher for CCPlanView hook - must match BOTH matcher AND command identifier
     private static let hookMatcher = "ExitPlanMode"
 
     /// The hook command for CCPlanView
-    /// - Uses `2>/dev/null` to suppress errors when no plan files exist
-    /// - Uses URL encoding for file path to handle special characters
+    /// Uses the bundled CLI tool for clean hook integration
     private static let hookCommand =
-        "FILE=$(ls -t ~/.claude/plans/*.md 2>/dev/null | head -1) && [ -n \"$FILE\" ] && open -a 'CCPlanView' \"$FILE\" && sleep 0.5 && open \"ccplanview://refresh?file=$(python3 -c \"import urllib.parse; print(urllib.parse.quote('$FILE', safe=''))\")\"" // swiftlint:disable:this line_length
+        "/Applications/CCPlanView.app/Contents/MacOS/ccplanview-notify"
 
     /// Check if Claude Code is installed (.claude directory exists)
     static func isClaudeCodeInstalled() -> Bool {
@@ -132,6 +134,7 @@ enum HookManager {
 
     /// Internal helper to find CCPlanView hook index in potentially mixed PreToolUse array
     /// Skips non-dictionary entries and searches only valid hook entries
+    /// Detects both new CLI tool format and legacy bash command format
     private static func findCCPlanViewHookIndexInMixedArray(preToolUse: [Any]) -> Int? {
         for (index, item) in preToolUse.enumerated() {
             // Skip non-dictionary entries
@@ -144,11 +147,11 @@ enum HookManager {
                 continue
             }
 
-            // Must have command containing our identifier
+            // Must have command containing our identifier (new or legacy)
             guard let hooksList = hookEntry["hooks"] as? [[String: Any]] else { continue }
             let hasOurCommand = hooksList.contains { hook in
                 guard let command = hook["command"] as? String else { return false }
-                return command.contains(hookIdentifier)
+                return command.contains(hookIdentifier) || command.contains(legacyHookIdentifier)
             }
 
             if hasOurCommand {

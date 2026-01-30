@@ -30,14 +30,18 @@ enum HookManager {
     static var settingsPath: URL { claudeDir.appendingPathComponent("settings.json") }
 
     /// Unique identifier for CCPlanView hook command (used for detection and removal)
-    private static let hookIdentifier = "open -a 'CCPlanView'"
+    private static let hookIdentifier = "ccplanview-notify"
+
+    /// Legacy hook identifier for migration from old command format
+    private static let legacyHookIdentifier = "open -a 'CCPlanView'"
 
     /// The matcher for CCPlanView hook - must match BOTH matcher AND command identifier
     private static let hookMatcher = "ExitPlanMode"
 
     /// The hook command for CCPlanView
+    /// Uses the bundled CLI tool for clean hook integration
     private static let hookCommand =
-        "FILE=$(ls -t ~/.claude/plans/*.md 2>/dev/null | head -1) && [ -n \"$FILE\" ] && open -a 'CCPlanView' \"$FILE\" && sleep 0.5 && open \"ccplanview://refresh?file=$(python3 -c \"import urllib.parse; print(urllib.parse.quote('$FILE', safe=''))\")\"" // swiftlint:disable:this line_length
+        "/Applications/CCPlanView.app/Contents/MacOS/ccplanview-notify"
 
     static func isClaudeCodeInstalled() -> Bool {
         FileManager.default.fileExists(atPath: claudeDir.path)
@@ -125,7 +129,7 @@ enum HookManager {
             guard let hooksList = hookEntry["hooks"] as? [[String: Any]] else { continue }
             let hasOurCommand = hooksList.contains { hook in
                 guard let command = hook["command"] as? String else { return false }
-                return command.contains(hookIdentifier)
+                return command.contains(hookIdentifier) || command.contains(legacyHookIdentifier)
             }
 
             if hasOurCommand {
