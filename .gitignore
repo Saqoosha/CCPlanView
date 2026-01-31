@@ -21,3 +21,6 @@ DerivedData/
 # Serena MCP
 .serena/
 .vscode/
+
+# Claude Code
+.plans/
