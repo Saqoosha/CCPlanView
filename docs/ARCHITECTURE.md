@@ -233,6 +233,12 @@ CCPlanViewApp (@main)
               └─ index.html (Resources)
 
 notifier (standalone CLI, bundled in app)
+  ├─ resolvePlansDirectory()
+  │   └─ Reads plansDirectory from Claude Code settings
+  │      Priority: .claude/settings.local.json
+  │              > .claude/settings.json
+  │              > ~/.claude/settings.json
+  │              > default (~/.claude/plans)
   └─ Called by Claude Code hooks to open latest plan file
 ```
 

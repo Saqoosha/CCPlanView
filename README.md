@@ -63,6 +63,22 @@ The following hook is added to `~/.claude/settings.json`:
 
 > **Note**: The path reflects the actual app location at install time.
 
+#### Custom Plans Directory
+
+By default, the notifier looks for plan files in `~/.claude/plans/`. To use a project-local directory, add a [`plansDirectory`](https://docs.anthropic.com/en/docs/claude-code/settings#available-settings) setting to your Claude Code configuration:
+
+```json
+// .claude/settings.json (project-level, shared with team)
+{
+  "plansDirectory": "./.plans"
+}
+```
+
+The notifier checks settings in this order:
+1. `.claude/settings.local.json` (project, personal)
+2. `.claude/settings.json` (project, shared)
+3. `~/.claude/settings.json` (global)
+
 ---
 
 ## Development

@@ -63,6 +63,22 @@ CCPlanView は [Claude Code](https://docs.anthropic.com/en/docs/claude-code) の
 
 > **Note**: パスはインストール時の実際のアプリ位置が反映される。
 
+#### カスタムプランディレクトリ
+
+デフォルトでは、notifier は `~/.claude/plans/` 内のプランファイルを探す。プロジェクトローカルなディレクトリを使うには、Claude Code 設定に [`plansDirectory`](https://docs.anthropic.com/en/docs/claude-code/settings#available-settings) を追加：
+
+```json
+// .claude/settings.json（プロジェクトレベル、チーム共有）
+{
+  "plansDirectory": "./.plans"
+}
+```
+
+notifier は以下の順序で設定を確認：
+1. `.claude/settings.local.json`（プロジェクト、個人用）
+2. `.claude/settings.json`（プロジェクト、共有）
+3. `~/.claude/settings.json`（グローバル）
+
 ---
 
 ## 開発
