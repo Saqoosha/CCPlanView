@@ -4,9 +4,43 @@ import Foundation
 /// This CLI tool is called by Claude Code hooks to notify CCPlanView
 /// when plan mode is exited, opening the latest plan file.
 
+/// Resolve plans directory from Claude Code settings
+/// Priority: .claude/settings.local.json > .claude/settings.json > ~/.claude/settings.json > default
+func resolvePlansDirectory() -> URL {
+    let fm = FileManager.default
+    let homeDir = fm.homeDirectoryForCurrentUser
+    let defaultDir = homeDir.appendingPathComponent(".claude/plans")
+
+    // Settings files to check (in priority order)
+    let settingsFiles = [
+        URL(fileURLWithPath: ".claude/settings.local.json"),
+        URL(fileURLWithPath: ".claude/settings.json"),
+        homeDir.appendingPathComponent(".claude/settings.json")
+    ]
+
+    for settingsURL in settingsFiles {
+        guard fm.fileExists(atPath: settingsURL.path),
+              let data = try? Data(contentsOf: settingsURL),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let plansDir = json["plansDirectory"] as? String else {
+            continue
+        }
+
+        // Expand ~ and resolve relative paths
+        let expandedPath = NSString(string: plansDir).expandingTildeInPath
+        if expandedPath.hasPrefix("/") {
+            return URL(fileURLWithPath: expandedPath)
+        } else {
+            // Relative path - resolve from current directory
+            return URL(fileURLWithPath: expandedPath).standardizedFileURL
+        }
+    }
+
+    return defaultDir
+}
+
 // Find the latest plan file
-let plansDir = FileManager.default.homeDirectoryForCurrentUser
-    .appendingPathComponent(".claude/plans")
+let plansDir = resolvePlansDirectory()
 
 guard FileManager.default.fileExists(atPath: plansDir.path) else {
     // No plans directory, exit silently
