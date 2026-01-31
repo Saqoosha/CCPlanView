@@ -1,4 +1,5 @@
 import AppKit
+import CCHookInstaller
 import SwiftUI
 
 @MainActor
@@ -7,8 +8,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     fileprivate static let windowButtonsWidth: CGFloat = 70
     fileprivate static let toolbarButtonsWidth: CGFloat = 100
     static let windowFrameKey = "CCPlanViewWindowFrame"
-
-    private static let dontAskHookSetupKey = "dontAskHookSetup"
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NotificationCenter.default.addObserver(
@@ -31,97 +30,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
 
         // Check hook setup on launch
-        checkHookSetup()
-    }
-
-    private func checkHookSetup() {
-        guard HookManager.isClaudeCodeInstalled() else { return }
-
-        // Check for settings validation errors
-        if let error = HookManager.validateSettings() {
-            showSettingsWarning(error)
-            return
-        }
-
-        // Check if hook needs update (cleanup)
-        if HookManager.needsHookUpdate() {
-            promptHookCleanup()
-            return
-        }
-
-        // Check if hook needs to be installed
-        guard !UserDefaults.standard.bool(forKey: Self.dontAskHookSetupKey) else { return }
-        guard !HookManager.isHookConfigured() else { return }
-
-        let alert = NSAlert()
-        alert.messageText = "Setup Claude Code Hooks?"
-        alert.informativeText =
-            "CCPlanView can automatically open plan files when Claude exits plan mode. Would you like to install the hook?"
-        alert.addButton(withTitle: "Install")
-        alert.addButton(withTitle: "Later")
-        alert.addButton(withTitle: "Don't Ask Again")
-
-        switch alert.runModal() {
-        case .alertFirstButtonReturn:  // Install
-            do {
-                try HookManager.installHook()
+        HookSetupUI.checkOnLaunch(
+            hookManager: HookManager.shared,
+            messages: HookManager.messages,
+            dontAskAgainKey: HookManager.dontAskAgainKey,
+            onConfigurationChanged: {
                 NotificationCenter.default.post(name: .hookConfigurationChanged, object: nil)
-                showSuccessAlert()
-            } catch {
-                showErrorAlert(error)
             }
-        case .alertThirdButtonReturn:  // Don't Ask Again
-            UserDefaults.standard.set(true, forKey: Self.dontAskHookSetupKey)
-        default:
-            break
-        }
-    }
-
-    private func showSettingsWarning(_ error: HookManagerError) {
-        let alert = NSAlert()
-        alert.messageText = "Claude Code Settings Warning"
-        alert.informativeText = error.localizedDescription
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    private func promptHookCleanup() {
-        let alert = NSAlert()
-        alert.messageText = "Update Hook Configuration?"
-        alert.informativeText =
-            "CCPlanView detected outdated or duplicate hooks. Would you like to clean up and update the hook configuration?"
-        alert.addButton(withTitle: "Update")
-        alert.addButton(withTitle: "Later")
-
-        if alert.runModal() == .alertFirstButtonReturn {
-            do {
-                try HookManager.cleanupAndInstallHook()
-                NotificationCenter.default.post(name: .hookConfigurationChanged, object: nil)
-                showSuccessAlert()
-            } catch {
-                showErrorAlert(error)
-            }
-        }
-    }
-
-    private func showSuccessAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Hooks Installed"
-        alert.informativeText =
-            "Claude Code hooks have been configured. CCPlanView will open plan files when Claude exits plan mode."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
-    private func showErrorAlert(_ error: Error) {
-        let alert = NSAlert()
-        alert.messageText = "Failed to Configure Hooks"
-        alert.informativeText = error.localizedDescription
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
+        )
     }
 
     @objc private func windowDidResize(_ notification: Notification) {

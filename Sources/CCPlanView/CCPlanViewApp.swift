@@ -1,4 +1,5 @@
 import AppKit
+import CCHookInstaller
 import SwiftUI
 
 struct ShowDiffKey: FocusedValueKey {
@@ -87,58 +88,37 @@ struct CCPlanViewApp: App {
     }
 
     private func installHook() {
-        let alert = NSAlert()
-        alert.messageText = "Setup Claude Code Hooks?"
-        alert.informativeText =
-            "CCPlanView will automatically open plan files when Claude exits plan mode."
-        alert.addButton(withTitle: "Install")
-        alert.addButton(withTitle: "Cancel")
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let confirmed = HookSetupUI.showInstallPrompt(
+            title: HookManager.messages.installPromptTitle,
+            message: HookManager.messages.installPromptMessage
+        )
+        guard confirmed == .install else { return }
 
         do {
             try HookManager.installHook()
             isHookConfigured = true
-            showSuccessAlert()
+            HookSetupUI.showSuccess(
+                title: HookManager.messages.successTitle,
+                message: HookManager.messages.successMessage
+            )
         } catch {
-            showErrorAlert(error)
+            HookSetupUI.showError(error)
         }
     }
 
-    private func showSuccessAlert() {
-        let alert = NSAlert()
-        alert.messageText = "Hooks Installed"
-        alert.informativeText =
-            "Claude Code hooks have been configured. CCPlanView will open plan files when Claude exits plan mode."
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
-    }
-
     private func removeHook() {
-        let alert = NSAlert()
-        alert.messageText = "Remove Claude Code Hooks?"
-        alert.informativeText = "CCPlanView will no longer open automatically when Claude exits plan mode."
-        alert.addButton(withTitle: "Remove")
-        alert.addButton(withTitle: "Cancel")
-
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let confirmed = HookSetupUI.showRemovePrompt(
+            title: "Remove Claude Code Hooks?",
+            message: "CCPlanView will no longer open automatically when Claude exits plan mode."
+        )
+        guard confirmed else { return }
 
         do {
             try HookManager.removeHook()
             isHookConfigured = false
         } catch {
-            showErrorAlert(error)
+            HookSetupUI.showError(error)
         }
-    }
-
-    private func showErrorAlert(_ error: Error) {
-        let alert = NSAlert()
-        alert.messageText = "Failed to Configure Hooks"
-        alert.informativeText = error.localizedDescription
-        alert.alertStyle = .critical
-        alert.addButton(withTitle: "OK")
-        alert.runModal()
     }
 }
 

@@ -7,9 +7,13 @@ let package = Package(
     platforms: [
         .macOS(.v14),
     ],
+    dependencies: [
+        .package(url: "https://github.com/Saqoosha/CCHookInstaller", from: "1.0.0"),
+    ],
     targets: [
         .executableTarget(
             name: "CCPlanView",
+            dependencies: ["CCHookInstaller"],
             path: "Sources/CCPlanView",
             resources: [
                 .copy("Resources"),

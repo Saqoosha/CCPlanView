@@ -1,0 +1,15 @@
+{
+  "originHash" : "5d3f7d4a91c68fa5fa5e01c029027eaa48e763fa2bf5c66aaadd27d625668c9c",
+  "pins" : [
+    {
+      "identity" : "cchookinstaller",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Saqoosha/CCHookInstaller",
+      "state" : {
+        "revision" : "73ac3c1dc31a2d1782caf4b7210584944c88db60",
+        "version" : "1.1.0"
+      }
+    }
+  ],
+  "version" : 3
+}
