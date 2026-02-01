@@ -8,6 +8,10 @@
   Claude Code のプランを表示する軽量 macOS マークダウンビューア
 </p>
 
+<p align="center">
+  <img src="images/screenshot.png" alt="CCPlanView の差分表示機能を示すスクリーンショット">
+</p>
+
 ## 機能
 
 - **GitHub 風マークダウン** - GitHub スタイルの美しいフォーマットで `.md` ファイルを表示

@@ -8,6 +8,10 @@ English | [日本語](README.ja.md)
   A lightweight macOS markdown viewer for Claude Code plans.
 </p>
 
+<p align="center">
+  <img src="images/screenshot.png" alt="CCPlanView screenshot showing diff visualization">
+</p>
+
 ## Features
 
 - **GitHub-Flavored Markdown** - Render `.md` files with beautiful GitHub-style formatting
