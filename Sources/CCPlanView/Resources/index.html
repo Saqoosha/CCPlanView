@@ -7,6 +7,7 @@
     <link id="highlight-theme" rel="stylesheet" href="highlight-github.min.css">
     <script src="marked.min.js"></script>
     <script src="highlight.min.js"></script>
+    <script src="mermaid.min.js"></script>
     <style>
         body {
             margin: 0;
@@ -99,6 +100,15 @@
             line-height: 0;
             font-size: 0;
             overflow: hidden;
+        }
+        .mermaid-container {
+            display: flex;
+            justify-content: center;
+            margin: 16px 0;
+        }
+        .mermaid-container svg {
+            max-width: 100%;
+            height: auto;
         }
     </style>
 </head>
@@ -558,6 +568,23 @@
             document.documentElement.setAttribute('data-color-mode', isDark ? 'dark' : 'light');
             document.documentElement.setAttribute('data-dark-theme', 'dark');
             document.documentElement.setAttribute('data-light-theme', 'light');
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: isDark ? 'dark' : 'default',
+                securityLevel: 'strict',
+            });
+            // Re-render existing Mermaid diagrams with new theme
+            let rerenderId = 0;
+            document.querySelectorAll('.mermaid-container').forEach(container => {
+                const src = container.dataset.mermaidSrc;
+                if (!src) return;
+                const id = `mermaid-theme-${Date.now()}-${rerenderId++}`;
+                mermaid.render(id, src).then(({ svg }) => {
+                    container.innerHTML = svg;
+                }).catch(err => {
+                    console.warn('[Mermaid] Theme re-render failed:', err);
+                });
+            });
         }
 
         // Resolve relative image paths in markdown/HTML source
@@ -592,9 +619,40 @@
 
             contentEl.innerHTML = marked.parse(source);
 
+            // Separate mermaid blocks from regular code blocks
+            const mermaidBlocks = [];
             document.querySelectorAll('pre code').forEach(block => {
-                hljs.highlightElement(block);
+                if (block.classList.contains('language-mermaid')) {
+                    mermaidBlocks.push(block);
+                } else {
+                    hljs.highlightElement(block);
+                }
             });
+
+            // Render Mermaid diagrams after diff processing
+            let mermaidId = 0;
+            function renderMermaidBlocks() {
+                const promises = mermaidBlocks.map(block => {
+                    const pre = block.parentElement;
+                    const source = block.textContent;
+                    const container = document.createElement('div');
+                    container.className = 'mermaid-container';
+                    container.dataset.mermaidSrc = source;
+                    const id = `mermaid-${Date.now()}-${mermaidId++}`;
+                    return mermaid.render(id, source).then(({ svg }) => {
+                        if (!pre.parentNode) return;
+                        // Preserve diff decorations from pre element
+                        if (pre.classList.contains('changed-block')) {
+                            container.classList.add('changed-block');
+                        }
+                        container.innerHTML = svg;
+                        pre.replaceWith(container);
+                    }).catch(err => {
+                        console.warn('[Mermaid] Render failed:', err);
+                    });
+                });
+                return Promise.all(promises);
+            }
 
             const hasChanges = diffResult &&
                 (diffResult.changes.size > 0 || diffResult.deletions.length > 0);
@@ -927,6 +985,8 @@
                     window.scrollTo(0, document.documentElement.scrollHeight * scrollRatio);
                 });
             }
+
+            renderMermaidBlocks();
         }
 
     </script>
