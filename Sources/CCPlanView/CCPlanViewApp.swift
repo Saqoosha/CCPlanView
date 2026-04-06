@@ -187,6 +187,8 @@ struct MainContentView: View {
                 }
                 .help("Reload")
                 .disabled(!needsReload)
+                // Workaround: macOS toolbar buttons don't re-render disabled state reliably
+                .id(needsReload)
             }
         }
         .onAppear {
@@ -240,8 +242,8 @@ struct MainContentView: View {
         guard let fileURL else { return }
         if let data = try? Data(contentsOf: fileURL) {
             renderedMarkdown = String(decoding: data, as: UTF8.self)
+            needsReload = false
         }
-        needsReload = false
     }
 
     private func setupFileWatcher() {
