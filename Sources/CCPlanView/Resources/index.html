@@ -110,6 +110,33 @@
             max-width: 100%;
             height: auto;
         }
+        @media print {
+            body {
+                padding-top: 0 !important;
+                background: #ffffff !important;
+            }
+            html[data-color-mode="dark"] body {
+                background: #ffffff !important;
+                color: #1f2328 !important;
+            }
+            .markdown-body {
+                padding: 0 !important;
+                max-width: none !important;
+                color: #1f2328 !important;
+                zoom: 0.65;
+            }
+            .mermaid-container {
+                page-break-inside: avoid;
+            }
+            .deleted-block,
+            .code-line-deleted {
+                display: none !important;
+            }
+            .changed-block,
+            .code-line-changed {
+                background-color: transparent !important;
+            }
+        }
     </style>
 </head>
 <body>

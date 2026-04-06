@@ -1,6 +1,7 @@
 import AppKit
 import CCHookInstaller
 import SwiftUI
+import WebKit
 
 struct ShowDiffKey: FocusedValueKey {
     typealias Value = Binding<Bool>
@@ -69,6 +70,25 @@ struct CCPlanViewApp: App {
                     isHookConfigured = HookManager.isHookConfigured()
                 }
             }
+            CommandGroup(replacing: .printItem) {
+                Button("Print…") {
+                    guard let window = NSApp.keyWindow,
+                          let webView = Self.findWebView(in: window.contentView)
+                    else { return }
+                    let printInfo = NSPrintInfo.shared.copy() as! NSPrintInfo
+                    printInfo.topMargin = 36
+                    printInfo.bottomMargin = 36
+                    printInfo.leftMargin = 36
+                    printInfo.rightMargin = 36
+                    printInfo.isHorizontallyCentered = true
+                    printInfo.isVerticallyCentered = false
+                    let printOp = webView.printOperation(with: printInfo)
+                    printOp.showsPrintPanel = true
+                    printOp.showsProgressPanel = true
+                    printOp.runModal(for: window, delegate: nil, didRun: nil, contextInfo: nil)
+                }
+                .keyboardShortcut("p", modifiers: .command)
+            }
             CommandGroup(after: .toolbar) {
                 Button(showDiff?.wrappedValue == true ? "Hide Diff" : "Show Diff") {
                     showDiff?.wrappedValue.toggle()
@@ -85,6 +105,15 @@ struct CCPlanViewApp: App {
                 .disabled(refreshAction == nil)
             }
         }
+    }
+
+    private static func findWebView(in view: NSView?) -> WKWebView? {
+        guard let view else { return nil }
+        if let webView = view as? WKWebView { return webView }
+        for subview in view.subviews {
+            if let found = findWebView(in: subview) { return found }
+        }
+        return nil
     }
 
     private func installHook() {
