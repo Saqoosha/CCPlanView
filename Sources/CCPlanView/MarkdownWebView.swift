@@ -89,11 +89,16 @@ struct MarkdownWebView: NSViewRepresentable {
     }
 
     private static func escapeForJS(_ string: String) -> String {
+        // .literal compares by code units, not grapheme clusters. Without it a
+        // backtick or dollar sign immediately followed by a combining mark (e.g.
+        // Thai mai han-akat U+0E31) forms a single Character that doesn't match
+        // the single-scalar pattern, so the escape silently skips it and the
+        // resulting JS template literal terminates early.
         string
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "`", with: "\\`")
-            .replacingOccurrences(of: "$", with: "\\$")
-            .replacingOccurrences(of: "</script>", with: "<\\/script>")
+            .replacingOccurrences(of: "\\", with: "\\\\", options: .literal)
+            .replacingOccurrences(of: "`", with: "\\`", options: .literal)
+            .replacingOccurrences(of: "$", with: "\\$", options: .literal)
+            .replacingOccurrences(of: "</script>", with: "<\\/script>", options: .literal)
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
