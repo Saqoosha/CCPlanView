@@ -12,11 +12,28 @@ mkdir -p "${BUILD_DIR}"
 # Regenerate Xcode project from project.yml
 xcodegen generate --spec "${ROOT_DIR}/project.yml"
 
+# Override signing for command-line builds so we don't depend on a
+# provisioning profile or a stale Mac Development cert. Release uses
+# Developer ID Application (notarization-ready); Debug uses ad-hoc.
+if [[ "${CONFIGURATION}" == "Release" ]]; then
+  SIGN_ARGS=(
+    "CODE_SIGN_STYLE=Manual"
+    "CODE_SIGN_IDENTITY=Developer ID Application: Whatever Co. (G5G54TCH8W)"
+  )
+else
+  SIGN_ARGS=(
+    "CODE_SIGN_IDENTITY=-"
+    "CODE_SIGNING_REQUIRED=NO"
+    "CODE_SIGNING_ALLOWED=NO"
+  )
+fi
+
 xcodebuild \
   -scheme CCPlanView \
   -configuration "${CONFIGURATION}" \
   -destination 'platform=macOS' \
   -derivedDataPath "${DERIVED_DATA_DIR}" \
+  "${SIGN_ARGS[@]}" \
   build
 
 echo "Built app:"
