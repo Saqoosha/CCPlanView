@@ -627,6 +627,29 @@
                     (match, prefix, path, suffix) => prefix + fileBase + path + suffix);
         }
 
+        // Append a cache-busting query to <img src=...> so reloads fetch fresh
+        // bytes instead of WebKit's in-memory image cache. http(s) and data:
+        // URLs are skipped; everything else (file://, absolute paths, and any
+        // relative paths that slipped past resolveImagePaths) gets stamped.
+        // A pre-existing #fragment is preserved by inserting "?_t=…" before it.
+        function addImageCacheBusters(html) {
+            const stamp = Date.now();
+            return html.replace(/(<img[^>]*?\s+src=)(["'])([^"']+)\2/gi, (match, prefix, quote, src) => {
+                if (/^(https?:|data:)/i.test(src)) return match;
+                const hashIdx = src.indexOf('#');
+                const base = hashIdx === -1 ? src : src.slice(0, hashIdx);
+                const fragment = hashIdx === -1 ? '' : src.slice(hashIdx);
+                const sep = base.indexOf('?') === -1 ? '?' : '&';
+                return `${prefix}${quote}${base}${sep}_t=${stamp}${fragment}${quote}`;
+            });
+        }
+
+        // Convenience for the diff-rendering branches so deleted/modified-old
+        // blocks get the same cache-busting treatment as the main render.
+        function parseMarkdownWithBusters(raw) {
+            return addImageCacheBusters(marked.parse(raw));
+        }
+
         function renderMarkdown(source) {
             const contentEl = document.getElementById('content');
             const scrollRatio = document.documentElement.scrollHeight > 0
@@ -644,7 +667,7 @@
             }
             previousTokens = newTokens;
 
-            contentEl.innerHTML = marked.parse(source);
+            contentEl.innerHTML = addImageCacheBusters(marked.parse(source));
 
             // Separate mermaid blocks from regular code blocks
             const mermaidBlocks = [];
@@ -697,7 +720,7 @@
                 function insertOldBlock(oldToken, beforeEl) {
                     const wrapper = document.createElement('div');
                     wrapper.classList.add('deleted-block');
-                    wrapper.innerHTML = marked.parse(oldToken.raw);
+                    wrapper.innerHTML = parseMarkdownWithBusters(oldToken.raw);
                     if (beforeEl) {
                         contentEl.insertBefore(wrapper, beforeEl);
                     } else {
@@ -735,7 +758,7 @@
                         const delLi = document.createElement('li');
                         delLi.classList.add('deleted-block');
                         // Use raw to preserve nested lists and block content
-                        const parsedItem = marked.parse(item.raw);
+                        const parsedItem = parseMarkdownWithBusters(item.raw);
                         // marked.parse wraps in <ul><li>...</li></ul>, extract inner li content
                         const tmpLi = document.createElement('div');
                         tmpLi.innerHTML = parsedItem;
@@ -897,7 +920,7 @@
                         for (const { beforeNewIdx, token: delToken } of bqDiff.deletions) {
                             const wrapper = document.createElement('div');
                             wrapper.classList.add('deleted-block');
-                            wrapper.innerHTML = marked.parse(delToken.raw);
+                            wrapper.innerHTML = parseMarkdownWithBusters(delToken.raw);
                             // Extract inner content (marked.parse wraps in tags)
                             const refChild = bqChildren[beforeNewIdx] || null;
                             if (refChild) {
@@ -920,7 +943,7 @@
                                 subEl.classList.add('changed-block');
                                 const oldWrapper = document.createElement('div');
                                 oldWrapper.classList.add('deleted-block');
-                                oldWrapper.innerHTML = marked.parse(subDetail.oldToken.raw);
+                                oldWrapper.innerHTML = parseMarkdownWithBusters(subDetail.oldToken.raw);
                                 el.insertBefore(oldWrapper, subEl);
                                 setFirst(oldWrapper);
                             } else if (subDetail.type === 'list') {

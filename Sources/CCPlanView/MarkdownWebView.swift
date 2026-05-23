@@ -9,6 +9,7 @@ struct MarkdownWebView: NSViewRepresentable {
     let markdown: String
     let fileURL: URL?
     let showDiff: Bool
+    let reloadID: Int
     let onFileDrop: (URL) -> Void
     @Environment(\.colorScheme) private var colorScheme
 
@@ -52,6 +53,12 @@ struct MarkdownWebView: NSViewRepresentable {
         let fileChanged = context.coordinator.lastFileURL != fileURL
         let themeChanged = context.coordinator.lastIsDarkMode != isDarkMode
         let contentChanged = context.coordinator.lastMarkdown != markdown
+        // Detect an explicit reload request. The caller initializes reloadID at 0
+        // (MainContentView's @State) and the coordinator's lastReloadID is also 0,
+        // so the first update is not a reload — refreshContent() bumps the value
+        // to force a re-render even when the markdown text hasn't changed.
+        let reloadRequested = context.coordinator.lastReloadID != reloadID
+        context.coordinator.lastReloadID = reloadID
 
         if fileChanged {
             context.coordinator.lastFileURL = fileURL
@@ -75,7 +82,7 @@ struct MarkdownWebView: NSViewRepresentable {
             webView.evaluateJavaScript(js)
         }
 
-        if contentChanged {
+        if contentChanged || reloadRequested {
             context.coordinator.lastMarkdown = markdown
             let escaped = Self.escapeForJS(markdown)
             webView.evaluateJavaScript("renderMarkdown(`\(escaped)`);")
@@ -111,6 +118,7 @@ struct MarkdownWebView: NSViewRepresentable {
         var lastIsDarkMode: Bool?
         var lastFileURL: URL?
         var lastShowDiff: Bool?
+        var lastReloadID: Int = 0
         var isPageLoaded = false
         var pendingMarkdown: String?
         var pendingIsDarkMode: Bool?

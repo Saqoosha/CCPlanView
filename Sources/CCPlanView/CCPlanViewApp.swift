@@ -160,6 +160,7 @@ struct MainContentView: View {
     @State private var hasDiff: Bool = false
     @State private var fileWatcher: FileWatcher?
     @State private var needsReload: Bool = false
+    @State private var reloadID: Int = 0
 
     private var backgroundColor: Color {
         colorScheme == .dark
@@ -176,6 +177,7 @@ struct MainContentView: View {
                     markdown: renderedMarkdown,
                     fileURL: fileURL,
                     showDiff: showDiff,
+                    reloadID: reloadID,
                     onFileDrop: { url in
                         openFile(url)
                     }
@@ -271,6 +273,9 @@ struct MainContentView: View {
         guard let fileURL else { return }
         if let data = try? Data(contentsOf: fileURL) {
             renderedMarkdown = String(decoding: data, as: UTF8.self)
+            // Bump reloadID so images re-fetch even if markdown text is identical
+            // (the file on disk may be unchanged while linked image files updated).
+            reloadID &+= 1
             needsReload = false
         }
     }
