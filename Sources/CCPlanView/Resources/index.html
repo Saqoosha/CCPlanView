@@ -24,6 +24,9 @@
             max-width: 980px;
             margin: 0 auto;
         }
+        .markdown-body :is(h1, h2, h3, h4, h5, h6) {
+            scroll-margin-top: 52px;
+        }
         .markdown-body pre code.hljs {
             padding: 0;
         }
@@ -149,10 +152,12 @@
         }
 
         // Generate slug from text for heading IDs
+        // Mirrors GitHub's anchor-ID convention: lowercase, keep Unicode letters/numbers
+        // (so CJK headings work) plus underscore, strip other punctuation, spaces → hyphens.
         function slugify(text) {
             return text.toLowerCase()
                 .replace(/<[^>]*>/g, '') // Remove HTML tags
-                .replace(/[^\w\s-]/g, '') // Remove special chars
+                .replace(/[^\p{L}\p{N}\s_-]/gu, '') // Strip non-letter/digit (Unicode-aware; keep _)
                 .replace(/\s+/g, '-') // Replace spaces with -
                 .replace(/-+/g, '-') // Replace multiple - with single -
                 .trim();
